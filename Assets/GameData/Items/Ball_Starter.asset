@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2d64ef1adad6b4943afe5e660904233d, type: 3}
+  m_Name: Ball_Starter
+  m_EditorClassIdentifier: Assembly-CSharp::ItemDef
+  id: ball_starter
+  displayName: Starter Ball
+  slot: 0
+  icon: {fileID: 0}
+  isStarter: 1
+  xpBonus01: 0
+  bonusThrows: 0
+  ballSprite: {fileID: 0}
+  ballColor: {r: 1, g: 1, b: 1, a: 1}
+  ballMaterial: {fileID: 0}
+  trailMaterial: {fileID: 0}
+  ballSkinPrefab: {fileID: 5405207911821770145, guid: 2e846cf61d73a904a9efd3f943ccdf85, type: 3}
+  trailPrefab: {fileID: 0}
