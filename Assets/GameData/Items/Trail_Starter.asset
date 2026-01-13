@@ -15,7 +15,8 @@ MonoBehaviour:
   id: trail_starter
   displayName: No Trail
   slot: 1
-  icon: {fileID: 0}
+  icon: {fileID: 21300000, guid: 5b55c46eed2575d418d0da836bce7183, type: 3}
+  description: 
   isStarter: 1
   xpBonus01: 0
   bonusThrows: 0

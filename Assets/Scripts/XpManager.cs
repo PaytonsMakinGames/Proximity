@@ -20,7 +20,7 @@ public class XpManager : MonoBehaviour
     void Awake()
     {
         // One global XP manager.
-        var existing = FindFirstObjectByType<XpManager>(FindObjectsInactive.Exclude);
+        var existing = FindFirstObjectByType<XpManager>(FindObjectsInactive.Include);
         if (existing != null && existing != this)
         {
             Destroy(gameObject);
@@ -61,7 +61,6 @@ void ResetXp_ContextMenu()
     PlayerPrefs.Save();
 
     OnXpChanged?.Invoke(Xp);
-    Debug.Log("[XpManager] XP reset.");
 }
 #endif
 }

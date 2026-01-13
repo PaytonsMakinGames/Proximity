@@ -263,6 +263,18 @@ public class RunScoring2D : MonoBehaviour
         UpdateThrowsUi();
     }
 
+    void OnEnable()
+    {
+        // Awake already tries to find inventory, but this keeps it safe if the object gets re-enabled later.
+        if (!inventory) inventory = FindFirstObjectByType<PlayerInventory>(FindObjectsInactive.Include);
+        if (inventory) inventory.OnChanged += OnInventoryChanged_RefreshThrows;
+    }
+
+    void OnDisable()
+    {
+        if (inventory) inventory.OnChanged -= OnInventoryChanged_RefreshThrows;
+    }
+
     void Update()
     {
         if (!ballRb || !ballCollider || !cam) return;
@@ -534,7 +546,7 @@ public class RunScoring2D : MonoBehaviour
     void OnAnyPickupStarted()
     {
         // Stop emitting if something was still following, but do NOT clear instantly.
-        // This also prevents “resume” behavior.
+        // This also prevents ï¿½resumeï¿½ behavior.
         PauseLandingVfxIfAny();
 
         if (!streakActive && resultLatched && !lastRunNoLanding)
@@ -678,6 +690,24 @@ public class RunScoring2D : MonoBehaviour
         throwsLeftText.SetText("{0}/{1}", ThrowsLeft, EffectiveThrowsPerRun);
     }
 
+    void OnInventoryChanged_RefreshThrows()
+    {
+        // If max throws changed mid-run, update the exhausted flag so pickup rules match immediately.
+        int max = EffectiveThrowsPerRun;
+
+        if (max <= 0)
+        {
+            throwsExhausted = false;
+            UpdateThrowsUi();
+            return;
+        }
+
+        // If the run is active, exhaustion depends on the new max.
+        throwsExhausted = streakActive && (throwsUsedThisRun >= max);
+
+        UpdateThrowsUi();
+    }
+
     float ComputeCatchGainFromSpeed(float speed)
     {
         if (catchGainSpeedMax <= catchGainSpeedMin) return catchGainAtMin;
@@ -720,11 +750,13 @@ public class RunScoring2D : MonoBehaviour
         displayedCatchMult = Round3(catchMultiplier);
         displayedLandingMult = 1f;
 
-        resultLatched = true;
-        UpdateScoreText();
-
         displayedRunScoreInt = lastLiveRunScoreInt;
         displayedXpInt = lastLiveXpInt;
+
+        displayedXpPct = lastLiveXpPct;
+
+        resultLatched = true;
+        UpdateScoreText();
 
         bool isNewBest = false;
         if (displayedXpInt > BestScore)
@@ -768,11 +800,13 @@ public class RunScoring2D : MonoBehaviour
             displayedLandingMult = Round2(shownLandingMult);
         }
 
-        resultLatched = true;
-        UpdateScoreText();
-
         displayedRunScoreInt = lastLiveRunScoreInt;
         displayedXpInt = lastLiveXpInt;
+
+        displayedXpPct = lastLiveXpPct;
+
+        resultLatched = true;
+        UpdateScoreText();
 
         bool isNewBest = false;
         if (displayedXpInt > BestScore)

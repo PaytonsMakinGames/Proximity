@@ -17,6 +17,9 @@ public class ItemDef : ScriptableObject
     [Header("UI")]
     public Sprite icon;
 
+    [TextArea(2, 6)]
+    public string description;
+
     [Header("Unlocking")]
     public bool isStarter = false;
 

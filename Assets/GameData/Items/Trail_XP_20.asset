@@ -13,9 +13,10 @@ MonoBehaviour:
   m_Name: Trail_XP_20
   m_EditorClassIdentifier: Assembly-CSharp::ItemDef
   id: trail_xp_20
-  displayName: 20% XP Trail
+  displayName: Blush
   slot: 1
-  icon: {fileID: 0}
+  icon: {fileID: 21300000, guid: 2c7c7e0017c575f47bb65145e0f808d7, type: 3}
+  description: +20% XP
   isStarter: 0
   xpBonus01: 0.2
   bonusThrows: 0

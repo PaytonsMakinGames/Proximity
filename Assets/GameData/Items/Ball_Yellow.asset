@@ -13,14 +13,15 @@ MonoBehaviour:
   m_Name: Ball_Yellow
   m_EditorClassIdentifier: Assembly-CSharp::ItemDef
   id: ball_yellow
-  displayName: 'Yellow: +1 Throw'
+  displayName: Yellow Ball
   slot: 0
-  icon: {fileID: 0}
+  icon: {fileID: 21300000, guid: f1ba949e08d91cd459aa652c0ab8d355, type: 3}
+  description: +1 Throw
   isStarter: 0
   xpBonus01: 0
   bonusThrows: 1
   ballSprite: {fileID: 0}
-  ballColor: {r: 1, g: 1, b: 1, a: 1}
+  ballColor: {r: 0.9843137, g: 1, b: 0, a: 1}
   ballMaterial: {fileID: 0}
   trailMaterial: {fileID: 0}
   ballSkinPrefab: {fileID: 5405207911821770145, guid: 09bf2f69439365a4a8f308acf106c253, type: 3}

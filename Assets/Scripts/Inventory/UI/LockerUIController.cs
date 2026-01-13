@@ -23,6 +23,11 @@ public class LockerUIController : MonoBehaviour
     [SerializeField] Button itemButtonPrefab; // template prefab
     [SerializeField] TextMeshProUGUI debugHeaderText; // optional
 
+    [Header("Details Panel")]
+    [SerializeField] TextMeshProUGUI detailsNameText;
+    [SerializeField] TextMeshProUGUI detailsBuffsText;
+
+
     EquipSlot currentSlot = EquipSlot.Ball;
 
     // Pool (prevents destroy/instantiate churn)
@@ -127,6 +132,8 @@ public class LockerUIController : MonoBehaviour
             var btn = GetButtonFromPool();
             ConfigureButton(btn, def, isEquipped);
         }
+
+        ShowDetails(equipped);
     }
 
     Button GetButtonFromPool()
@@ -160,22 +167,29 @@ public class LockerUIController : MonoBehaviour
     {
         if (!btn) return;
 
-        var label = btn.GetComponentInChildren<TextMeshProUGUI>(true);
-        if (label)
+        var t = btn.transform;
+
+        var iconImg = t.Find("Icon")?.GetComponent<Image>();
+        var outlineGO = t.Find("SelectedOutline")?.gameObject;
+
+        if (iconImg)
         {
-            string eq = isEquipped ? " (Equipped)" : "";
-            string bonus = def.xpBonus01 > 0f ? "  +" + Mathf.RoundToInt(def.xpBonus01 * 100f) + "% XP" : "";
-            label.text = def.displayName + bonus + eq;
+            iconImg.sprite = def.icon;
+
+            // THIS is what makes it orange
+            iconImg.color = def.ballColor;
         }
 
-        var img = btn.GetComponentInChildren<Image>(true);
-        if (img && def.icon) img.sprite = def.icon;
+        if (outlineGO)
+            outlineGO.SetActive(isEquipped);
 
         btn.onClick.AddListener(() =>
         {
             inventory.Equip(def.id);
+            ShowDetails(def);
             Refresh();
         });
+
     }
 
     static void SetGroup(CanvasGroup g, bool on)
@@ -184,5 +198,21 @@ public class LockerUIController : MonoBehaviour
         g.alpha = on ? 1f : 0f;
         g.interactable = on;
         g.blocksRaycasts = on;
+    }
+
+    void ShowDetails(ItemDef def)
+    {
+        if (!detailsNameText || !detailsBuffsText) return;
+
+        if (def == null)
+        {
+            detailsNameText.text = "";
+            detailsBuffsText.text = "";
+            return;
+        }
+
+        detailsNameText.text = def.displayName;
+
+        detailsBuffsText.text = def.description ?? "";
     }
 }

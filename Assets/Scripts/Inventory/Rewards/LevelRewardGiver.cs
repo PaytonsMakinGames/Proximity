@@ -7,8 +7,8 @@ public class LevelRewardGiver : MonoBehaviour
     [SerializeField] PlayerInventory inventory;
 
     [Header("Reward")]
-    [SerializeField] int rewardLevel = 5;
-    [SerializeField] string rewardItemId = "trail_xp_10";
+    [SerializeField] int rewardLevel = 25;
+    [SerializeField] string rewardItemId = "YOUR_LEVEL25_TRAIL_ID"; // must match ItemDef.id exactly
 
     void Awake()
     {
@@ -19,6 +19,13 @@ public class LevelRewardGiver : MonoBehaviour
     void OnEnable()
     {
         if (xp) xp.OnLevelUp += HandleLevelUp;
+        StartCoroutine(CatchUpNextFrame());
+    }
+
+    System.Collections.IEnumerator CatchUpNextFrame()
+    {
+        yield return null;
+        TryGrant();
     }
 
     void OnDisable()
@@ -26,11 +33,16 @@ public class LevelRewardGiver : MonoBehaviour
         if (xp) xp.OnLevelUp -= HandleLevelUp;
     }
 
-    void HandleLevelUp(int newLevel)
+    void HandleLevelUp(int _)
     {
-        if (!inventory) return;
+        TryGrant();
+    }
 
-        if (newLevel == rewardLevel)
+    void TryGrant()
+    {
+        if (!xp || !inventory) return;
+
+        if (xp.Level >= rewardLevel && !inventory.Owns(rewardItemId))
         {
             inventory.Grant(rewardItemId);
         }

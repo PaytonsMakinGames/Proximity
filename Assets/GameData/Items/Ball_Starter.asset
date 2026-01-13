@@ -15,7 +15,8 @@ MonoBehaviour:
   id: ball_starter
   displayName: Starter Ball
   slot: 0
-  icon: {fileID: 0}
+  icon: {fileID: 21300000, guid: f1ba949e08d91cd459aa652c0ab8d355, type: 3}
+  description: 
   isStarter: 1
   xpBonus01: 0
   bonusThrows: 0

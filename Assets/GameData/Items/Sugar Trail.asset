@@ -10,19 +10,19 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 2d64ef1adad6b4943afe5e660904233d, type: 3}
-  m_Name: Trail_XP_10
+  m_Name: Sugar Trail
   m_EditorClassIdentifier: Assembly-CSharp::ItemDef
-  id: trail_xp_10
-  displayName: Ion Flame
+  id: trail_sugar
+  displayName: Powdered Sugar
   slot: 1
-  icon: {fileID: 21300000, guid: 65e1712949f30684da2957701893e09e, type: 3}
-  description: +10% XP
+  icon: {fileID: 0}
+  description: +30% XP
   isStarter: 0
-  xpBonus01: 0.1
+  xpBonus01: 0.3
   bonusThrows: 0
   ballSprite: {fileID: 0}
   ballColor: {r: 1, g: 1, b: 1, a: 1}
   ballMaterial: {fileID: 0}
   trailMaterial: {fileID: 0}
   ballSkinPrefab: {fileID: 0}
-  trailPrefab: {fileID: 5308278247123101928, guid: 0339e7906b14a3b49a51516855fb01e0, type: 3}
+  trailPrefab: {fileID: 4960663272779729229, guid: 48ddc7f981958fc41b0cb1deb29e0d52, type: 3}
