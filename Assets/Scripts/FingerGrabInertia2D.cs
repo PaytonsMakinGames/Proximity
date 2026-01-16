@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.Controls;
+using System;
 
 [DefaultExecutionOrder(-100)]
 [RequireComponent(typeof(Rigidbody2D))]
@@ -58,11 +59,17 @@ public class FingerGrabInertia2D : MonoBehaviour
     bool isDragging;
     public bool IsDragging => isDragging;
 
+    public event Action OnDragBegan;
+    public event Action<bool> OnDragEnded; // bool = thrown
+
     public bool WasThrown { get; private set; }
     public bool WasDropped { get; private set; }
 
     public bool LastPickupWasCatch { get; private set; }
     public float LastPickupSpeed { get; private set; }
+
+    public Vector2 CurrentDragScreenPos { get; private set; }
+    public Vector2 CurrentDragWorldPos { get; private set; }
 
     Vector2 dragOffsetWorld;
 
@@ -104,7 +111,11 @@ public class FingerGrabInertia2D : MonoBehaviour
     {
         if (GameInputLock.Locked)
         {
-            if (isDragging) CancelDragNoThrow();
+            if (isDragging)
+            {
+                Debug.Log($"[Grab] Cancel due to GameInputLock frame={Time.frameCount}");
+                CancelDragNoThrow();
+            }
             return;
         }
 
@@ -124,7 +135,11 @@ public class FingerGrabInertia2D : MonoBehaviour
         // If player is doing a 3/4/5-finger gesture, DO NOT keep dragging.
         if (active >= cancelDragAtTouchCount)
         {
-            if (isDragging) CancelDragNoThrow();
+            if (isDragging)
+            {
+                Debug.Log($"[Grab] Cancel due to touchCount={active} frame={Time.frameCount}");
+                CancelDragNoThrow();
+            }
             return;
         }
 
@@ -145,8 +160,7 @@ public class FingerGrabInertia2D : MonoBehaviour
         // If dragging: keep using the SAME touch id that started the drag.
         if (!TryGetTouchById(draggingTouchId, out TouchControl dragTouch))
         {
-            // That finger disappeared (rare); safely end drag with no throw.
-            // You can choose to ReleaseDrag() here instead, but "no finger" usually means we should stop.
+            Debug.Log($"[Grab] Cancel due to missing touchId={draggingTouchId} frame={Time.frameCount}");
             CancelDragNoThrow();
             return;
         }
@@ -235,6 +249,8 @@ public class FingerGrabInertia2D : MonoBehaviour
         LastPickupSpeed = speed;
 
         Vector2 fingerWorld = ScreenToWorld(screenPos);
+        CurrentDragScreenPos = screenPos;
+        CurrentDragWorldPos = fingerWorld + dragOffsetWorld;
         bool startedOnBall = IsTapOnBall(screenPos, speed);
 
         bool runActive = (scoring != null && scoring.RunActive);
@@ -254,6 +270,7 @@ public class FingerGrabInertia2D : MonoBehaviour
         LastPickupWasCatch = startedOnBall;
 
         isDragging = true;
+        OnDragBegan?.Invoke();
         WasThrown = false;
         WasDropped = false;
 
@@ -282,9 +299,12 @@ public class FingerGrabInertia2D : MonoBehaviour
 
     void DragStep(Vector2 screenPos)
     {
+        CurrentDragScreenPos = screenPos;
         Vector2 fingerWorld = ScreenToWorld(screenPos);
 
         Vector2 desired = fingerWorld + dragOffsetWorld;
+
+        CurrentDragWorldPos = desired;
 
         Bounds2D b = ComputeBounds();
 
@@ -300,8 +320,10 @@ public class FingerGrabInertia2D : MonoBehaviour
 
     void ReleaseDrag()
     {
+        Debug.Log($"[Grab] ReleaseDrag frame={Time.frameCount}");
         if (!isDragging) return;
         isDragging = false;
+        OnDragEnded?.Invoke(WasThrown);
         draggingTouchId = -1;
 
         if (kinematicWhileDragging)
@@ -335,7 +357,9 @@ public class FingerGrabInertia2D : MonoBehaviour
 
     void CancelDragNoThrow()
     {
+        Debug.Log($"[Grab] CancelDragNoThrow frame={Time.frameCount}");
         isDragging = false;
+        OnDragEnded?.Invoke(false);
         draggingTouchId = -1;
 
         if (kinematicWhileDragging)

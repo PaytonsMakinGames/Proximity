@@ -117,6 +117,9 @@ public class RunScoring2D : MonoBehaviour
     [SerializeField] XpManager xp;
     [SerializeField] PlayerInventory inventory;
 
+    [Header("Powerups (v1)")]
+    [SerializeField] PowerupManager powerups;
+
     [Header("Run Cancel")]
     [SerializeField] KeyCode cancelRunKey = KeyCode.X;
     [SerializeField] int cancelRunFingerCount = 5;
@@ -233,6 +236,7 @@ public class RunScoring2D : MonoBehaviour
 
         if (!inventory) inventory = FindFirstObjectByType<PlayerInventory>(FindObjectsInactive.Include);
         if (!xp) xp = FindFirstObjectByType<XpManager>(FindObjectsInactive.Include);
+        if (!powerups) powerups = FindFirstObjectByType<PowerupManager>(FindObjectsInactive.Include);
 
         totalDistance = PlayerPrefs.GetFloat(totalDistanceKey, 0f);
         totalBounces = PlayerPrefs.GetInt(totalBouncesKey, 0);
@@ -742,6 +746,7 @@ public class RunScoring2D : MonoBehaviour
         if (!streakActive) return;
 
         streakActive = false;
+        if (powerups) powerups.OnRunEnded();
         lastRunNoLanding = true;
 
         BankRemainingDistance();
@@ -782,6 +787,7 @@ public class RunScoring2D : MonoBehaviour
         if (!streakActive) return;
 
         streakActive = false;
+        if (powerups) powerups.OnRunEnded();
         BankRemainingDistance();
 
         displayedDistance = RoundInt(travelDistance);
@@ -1311,6 +1317,7 @@ public class RunScoring2D : MonoBehaviour
     void CancelRun_NoBank_NoScore()
     {
         streakActive = false;
+        if (powerups) powerups.OnRunEnded();
         resultLatched = false;
         lastRunNoLanding = false;
 
