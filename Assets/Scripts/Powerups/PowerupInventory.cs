@@ -17,6 +17,10 @@ public class PowerupInventory : MonoBehaviour
     [Header("Save")]
     [SerializeField] string saveKey = "PowerupInventory_v1";
 
+    [Header("DEV seed (testing only)")]
+    [SerializeField] bool devSeedOnFirstInstall = true;
+    [SerializeField] int devSeedEach = 1;
+
     public event Action OnChanged;
 
     PowerupInventorySave save = new PowerupInventorySave();
@@ -24,8 +28,19 @@ public class PowerupInventory : MonoBehaviour
 
     void Awake()
     {
+        bool hadSave = PlayerPrefs.HasKey(saveKey);
+
         Load();
         RebuildMapFromSave();
+
+        // DEV: fresh installs on Android have no inventory, so the radial looks "invisible".
+        // Seed once (only when there was no save yet).
+        if (devSeedOnFirstInstall && !hadSave)
+        {
+            DevSeedAll(devSeedEach);
+            SaveToPrefs();
+            OnChanged?.Invoke();
+        }
     }
 
     void RebuildMapFromSave()
@@ -106,6 +121,28 @@ public class PowerupInventory : MonoBehaviour
         PlayerPrefs.Save();
     }
 
+    void DevSeedAll(int each)
+    {
+        if (!db)
+        {
+            Debug.LogWarning("[PowerupInventory] No db assigned; cannot seed.");
+            return;
+        }
+
+        if (each < 1) each = 1;
+
+        foreach (var p in db.powerups)
+        {
+            if (!p) continue;
+            if (string.IsNullOrEmpty(p.id)) continue;
+
+            int cur = GetCount(p.id);
+            map[p.id] = cur + each;
+        }
+
+        Debug.Log($"[PowerupInventory] DEV seeded {each} of each powerup (first install).");
+    }
+
 #if UNITY_EDITOR
     [ContextMenu("Reset Powerup Inventory")]
     void ResetPowerupInventory_ContextMenu()
@@ -117,22 +154,13 @@ public class PowerupInventory : MonoBehaviour
         OnChanged?.Invoke();
         Debug.Log("[PowerupInventory] Reset.");
     }
+
     [ContextMenu("DEV: Grant 1 of each powerup in database")]
     void DevGrantAll()
     {
-        if (!db)
-        {
-            Debug.LogWarning("[PowerupInventory] No db assigned.");
-            return;
-        }
-
-        foreach (var p in db.powerups)
-        {
-            if (!p) continue;
-            if (string.IsNullOrEmpty(p.id)) continue;
-            Add(p.id, 1);
-        }
-
+        DevSeedAll(1);
+        SaveToPrefs();
+        OnChanged?.Invoke();
         Debug.Log("[PowerupInventory] Granted 1 of each powerup.");
     }
 #endif

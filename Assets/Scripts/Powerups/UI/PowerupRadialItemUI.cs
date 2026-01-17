@@ -19,11 +19,7 @@ public class PowerupRadialItemUI : MonoBehaviour
 
     public void SetHighlighted(bool on)
     {
-        Debug.Log($"[RadialItem] {powerupId} highlighted = {on}");
-
-        if (highlight != null)
-            highlight.enabled = on;
-
+        if (highlight) highlight.enabled = on;
         transform.localScale = on ? Vector3.one * 1.08f : Vector3.one;
     }
 }

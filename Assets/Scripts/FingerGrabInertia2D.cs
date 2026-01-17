@@ -52,12 +52,19 @@ public class FingerGrabInertia2D : MonoBehaviour
     [Tooltip("If 3+ fingers are down, we cancel drag so pause/cancel gestures don't fling the ball.")]
     [SerializeField, Range(2, 6)] int cancelDragAtTouchCount = 3;
 
+    [Header("Wall push offset relax (for missed-catch recovery)")]
+    [Tooltip("If the ball is clamped into bounds while held, collapse finger-to-ball offset so pushing into a wall 'reconnects' the finger to the ball.")]
+    [SerializeField] bool relaxOffsetWhenClamped = true;
+
     Camera cam;
     Rigidbody2D rb;
     CircleCollider2D circle;
 
     bool isDragging;
     public bool IsDragging => isDragging;
+
+    // IMPORTANT: stable "held" state
+    public bool IsHeld { get; private set; }
 
     public event Action OnDragBegan;
     public event Action<bool> OnDragEnded; // bool = thrown
@@ -80,7 +87,6 @@ public class FingerGrabInertia2D : MonoBehaviour
 
     RigidbodyType2D savedBodyType;
 
-    // Touch tracking (IMPORTANT)
     int draggingTouchId = -1;
 
     struct Bounds2D
@@ -111,11 +117,7 @@ public class FingerGrabInertia2D : MonoBehaviour
     {
         if (GameInputLock.Locked)
         {
-            if (isDragging)
-            {
-                Debug.Log($"[Grab] Cancel due to GameInputLock frame={Time.frameCount}");
-                CancelDragNoThrow();
-            }
+            if (isDragging) CancelDragNoThrow();
             return;
         }
 
@@ -132,18 +134,12 @@ public class FingerGrabInertia2D : MonoBehaviour
     {
         int active = ActiveTouchCount();
 
-        // If player is doing a 3/4/5-finger gesture, DO NOT keep dragging.
         if (active >= cancelDragAtTouchCount)
         {
-            if (isDragging)
-            {
-                Debug.Log($"[Grab] Cancel due to touchCount={active} frame={Time.frameCount}");
-                CancelDragNoThrow();
-            }
+            if (isDragging) CancelDragNoThrow();
             return;
         }
 
-        // If not dragging: we only start on primaryTouch press.
         if (!isDragging)
         {
             var t = Touchscreen.current.primaryTouch;
@@ -157,10 +153,8 @@ public class FingerGrabInertia2D : MonoBehaviour
             return;
         }
 
-        // If dragging: keep using the SAME touch id that started the drag.
         if (!TryGetTouchById(draggingTouchId, out TouchControl dragTouch))
         {
-            Debug.Log($"[Grab] Cancel due to missing touchId={draggingTouchId} frame={Time.frameCount}");
             CancelDragNoThrow();
             return;
         }
@@ -208,7 +202,6 @@ public class FingerGrabInertia2D : MonoBehaviour
             }
         }
 
-        // Also allow finding it even if it's still pressed but no edges happened.
         foreach (var t in ts.touches)
         {
             if (t == null) continue;
@@ -250,9 +243,8 @@ public class FingerGrabInertia2D : MonoBehaviour
 
         Vector2 fingerWorld = ScreenToWorld(screenPos);
         CurrentDragScreenPos = screenPos;
-        CurrentDragWorldPos = fingerWorld + dragOffsetWorld;
-        bool startedOnBall = IsTapOnBall(screenPos, speed);
 
+        bool startedOnBall = IsTapOnBall(screenPos, speed);
         bool runActive = (scoring != null && scoring.RunActive);
 
         if (!runActive && !startedOnBall && !allowTelekinesisWhenIdle)
@@ -270,13 +262,14 @@ public class FingerGrabInertia2D : MonoBehaviour
         LastPickupWasCatch = startedOnBall;
 
         isDragging = true;
+        IsHeld = true;
         OnDragBegan?.Invoke();
+
         WasThrown = false;
         WasDropped = false;
 
         dragOffsetWorld = rb.position - fingerWorld;
 
-        // Stop physics motion immediately
         rb.linearVelocity = Vector2.zero;
         rb.angularVelocity = 0f;
 
@@ -302,8 +295,8 @@ public class FingerGrabInertia2D : MonoBehaviour
         CurrentDragScreenPos = screenPos;
         Vector2 fingerWorld = ScreenToWorld(screenPos);
 
+        // Where the player "wants" the ball to be, based on current offset
         Vector2 desired = fingerWorld + dragOffsetWorld;
-
         CurrentDragWorldPos = desired;
 
         Bounds2D b = ComputeBounds();
@@ -312,17 +305,29 @@ public class FingerGrabInertia2D : MonoBehaviour
         target.x = Mathf.Clamp(target.x, b.minX, b.maxX);
         target.y = Mathf.Clamp(target.y, b.minY, b.maxY);
 
+        bool clamped = (target.x != desired.x) || (target.y != desired.y);
+
         rb.position = target;
 
-        // Sample desired (not clamped target)
+        // Key feature: if the ball is pinned to the bounds, collapse the offset so the finger "reconnects" to the ball.
+        // This makes recovering to the powerup pad after a missed catch much easier.
+        if (relaxOffsetWhenClamped && clamped)
+        {
+            dragOffsetWorld = rb.position - fingerWorld;  // reduce gap to whatever the bounds allow
+            CurrentDragWorldPos = fingerWorld + dragOffsetWorld; // keep bookkeeping consistent
+        }
+
+        // Sample desired (not clamped target) for throw velocity feel
         PushSample(desired, Time.unscaledTime);
     }
 
     void ReleaseDrag()
     {
-        Debug.Log($"[Grab] ReleaseDrag frame={Time.frameCount}");
         if (!isDragging) return;
+
+        IsHeld = false;
         isDragging = false;
+
         OnDragEnded?.Invoke(WasThrown);
         draggingTouchId = -1;
 
@@ -357,8 +362,9 @@ public class FingerGrabInertia2D : MonoBehaviour
 
     void CancelDragNoThrow()
     {
-        Debug.Log($"[Grab] CancelDragNoThrow frame={Time.frameCount}");
         isDragging = false;
+        IsHeld = false;
+
         OnDragEnded?.Invoke(false);
         draggingTouchId = -1;
 
@@ -412,9 +418,7 @@ public class FingerGrabInertia2D : MonoBehaviour
         Bounds2D b = ComputeBounds();
         Vector2 p = rb.position;
 
-        return
-            p.x < b.minX || p.x > b.maxX ||
-            p.y < b.minY || p.y > b.maxY;
+        return p.x < b.minX || p.x > b.maxX || p.y < b.minY || p.y > b.maxY;
     }
 
     Bounds2D ComputeBounds()
