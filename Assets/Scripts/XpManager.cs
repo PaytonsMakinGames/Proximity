@@ -17,6 +17,9 @@ public class XpManager : MonoBehaviour
     public event Action<int> OnXpChanged;   // sends new XP
     public event Action<int> OnLevelUp;     // sends new level
 
+    bool pendingRunActive;
+    int pendingRunScaledTotal;
+
     void Awake()
     {
         // One global XP manager.
@@ -50,6 +53,74 @@ public class XpManager : MonoBehaviour
         int afterLevel = Level;
         if (afterLevel > beforeLevel)
             OnLevelUp?.Invoke(afterLevel);
+    }
+
+    int ScaleRawToScaled(int rawAmount)
+    {
+        if (rawAmount <= 0) return 0;
+        return Mathf.Max(1, Mathf.RoundToInt(rawAmount * xpScale));
+    }
+
+    /// <summary>
+    /// Applies and SAVES XP for a run total that is still allowed to change (Encore revive).
+    /// Call again with a new rawTotal to apply the delta (can be negative).
+    /// </summary>
+    public void BeginOrUpdatePendingRunXp(int rawTotal)
+    {
+        rawTotal = Mathf.Max(0, rawTotal);
+
+        int newScaledTotal = ScaleRawToScaled(rawTotal);
+
+        // First time: just set the total.
+        if (!pendingRunActive)
+        {
+            pendingRunActive = true;
+            pendingRunScaledTotal = newScaledTotal;
+
+            int beforeLevel = Level;
+
+            Xp = Mathf.Max(0, Xp + newScaledTotal);
+
+            PlayerPrefs.SetInt(xpKey, Xp);
+            PlayerPrefs.Save();
+
+            OnXpChanged?.Invoke(Xp);
+
+            int afterLevel = Level;
+            if (afterLevel > beforeLevel)
+                OnLevelUp?.Invoke(afterLevel);
+
+            return;
+        }
+
+        // Update: apply delta from the last applied total.
+        int deltaScaled = newScaledTotal - pendingRunScaledTotal;
+        if (deltaScaled == 0) return;
+
+        pendingRunScaledTotal = newScaledTotal;
+
+        int beforeLevel2 = Level;
+
+        Xp = Mathf.Max(0, Xp + deltaScaled);
+
+        PlayerPrefs.SetInt(xpKey, Xp);
+        PlayerPrefs.Save();
+
+        OnXpChanged?.Invoke(Xp);
+
+        int afterLevel2 = Level;
+        if (afterLevel2 > beforeLevel2)
+            OnLevelUp?.Invoke(afterLevel2);
+    }
+
+    /// <summary>
+    /// Call when the run is no longer allowed to change (player starts next run).
+    /// This does not change XP; it only closes the adjustable window.
+    /// </summary>
+    public void EndPendingRunXp()
+    {
+        pendingRunActive = false;
+        pendingRunScaledTotal = 0;
     }
 
 #if UNITY_EDITOR

@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PowerupDefinition
   id: encore
   displayName: Encore
-  trigger: 3
+  trigger: 4
   icon: {fileID: 0}
   description: 
   f0: 0

@@ -11,4 +11,7 @@ public enum PowerupTrigger
 
     // Triggered at end-of-run offer stage (Encore is special; still manual).
     EndOfRunOffer = 3,
+
+    // Triggered on the next throw release (Encore).
+    NextThrowRelease = 4,
 }

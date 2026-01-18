@@ -10,9 +10,9 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 2d64ef1adad6b4943afe5e660904233d, type: 3}
-  m_Name: Sugar Trail
+  m_Name: Trail_Sand
   m_EditorClassIdentifier: Assembly-CSharp::ItemDef
-  id: trail_sugar
+  id: trail_sand
   displayName: Powdered Sugar
   slot: 1
   icon: {fileID: 0}

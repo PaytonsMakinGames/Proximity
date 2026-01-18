@@ -52,10 +52,6 @@ public class FingerGrabInertia2D : MonoBehaviour
     [Tooltip("If 3+ fingers are down, we cancel drag so pause/cancel gestures don't fling the ball.")]
     [SerializeField, Range(2, 6)] int cancelDragAtTouchCount = 3;
 
-    [Header("Wall push offset relax (for missed-catch recovery)")]
-    [Tooltip("If the ball is clamped into bounds while held, collapse finger-to-ball offset so pushing into a wall 'reconnects' the finger to the ball.")]
-    [SerializeField] bool relaxOffsetWhenClamped = true;
-
     Camera cam;
     Rigidbody2D rb;
     CircleCollider2D circle;
@@ -63,7 +59,7 @@ public class FingerGrabInertia2D : MonoBehaviour
     bool isDragging;
     public bool IsDragging => isDragging;
 
-    // IMPORTANT: stable "held" state
+    // Stable "held" state (for radial menu pad logic)
     public bool IsHeld { get; private set; }
 
     public event Action OnDragBegan;
@@ -74,6 +70,8 @@ public class FingerGrabInertia2D : MonoBehaviour
 
     public bool LastPickupWasCatch { get; private set; }
     public float LastPickupSpeed { get; private set; }
+    public Vector2 LastPickupVelocity { get; private set; }
+    public Vector2 LastPickupPosition { get; private set; }
 
     public Vector2 CurrentDragScreenPos { get; private set; }
     public Vector2 CurrentDragWorldPos { get; private set; }
@@ -87,6 +85,7 @@ public class FingerGrabInertia2D : MonoBehaviour
 
     RigidbodyType2D savedBodyType;
 
+    // Touch tracking
     int draggingTouchId = -1;
 
     struct Bounds2D
@@ -194,8 +193,7 @@ public class FingerGrabInertia2D : MonoBehaviour
             if (t == null) continue;
             if (!t.press.isPressed && !t.press.wasReleasedThisFrame && !t.press.wasPressedThisFrame) continue;
 
-            int tid = t.touchId.ReadValue();
-            if (tid == id)
+            if (t.touchId.ReadValue() == id)
             {
                 touch = t;
                 return true;
@@ -238,8 +236,12 @@ public class FingerGrabInertia2D : MonoBehaviour
         if (scoring != null && !scoring.CanPickUpBallNow())
             return;
 
-        float speed = rb.linearVelocity.magnitude;
+        Vector2 v = rb.linearVelocity;
+        float speed = v.magnitude;
+
         LastPickupSpeed = speed;
+        LastPickupVelocity = v;
+        LastPickupPosition = rb.position;
 
         Vector2 fingerWorld = ScreenToWorld(screenPos);
         CurrentDragScreenPos = screenPos;
@@ -268,8 +270,7 @@ public class FingerGrabInertia2D : MonoBehaviour
         WasThrown = false;
         WasDropped = false;
 
-        dragOffsetWorld = rb.position - fingerWorld;
-
+        // Stop physics motion immediately
         rb.linearVelocity = Vector2.zero;
         rb.angularVelocity = 0f;
 
@@ -279,12 +280,32 @@ public class FingerGrabInertia2D : MonoBehaviour
             rb.bodyType = RigidbodyType2D.Kinematic;
         }
 
-        if (LastPickupWasCatch && speed > vfxMinSpeedToCountAsCatch)
-            PlayCatchVfxAt(rb.position);
+        // NEW: If this was a miss, teleport ball under finger (clamped), zero offset.
+        if (!LastPickupWasCatch)
+        {
+            Bounds2D b = ComputeBounds();
+
+            Vector2 snapped = fingerWorld;
+            snapped.x = Mathf.Clamp(snapped.x, b.minX, b.maxX);
+            snapped.y = Mathf.Clamp(snapped.y, b.minY, b.maxY);
+
+            rb.position = snapped;
+            dragOffsetWorld = Vector2.zero;
+        }
+        else
+        {
+            dragOffsetWorld = rb.position - fingerWorld;
+
+            if (speed > vfxMinSpeedToCountAsCatch)
+                PlayCatchVfxAt(rb.position);
+        }
+
+        CurrentDragWorldPos = fingerWorld + dragOffsetWorld;
 
         sampleIndex = 0;
         sampleFilled = 0;
 
+        // Seed samples with the initial desired position
         PushSample(fingerWorld + dragOffsetWorld, Time.unscaledTime);
 
         DragStep(screenPos);
@@ -295,7 +316,6 @@ public class FingerGrabInertia2D : MonoBehaviour
         CurrentDragScreenPos = screenPos;
         Vector2 fingerWorld = ScreenToWorld(screenPos);
 
-        // Where the player "wants" the ball to be, based on current offset
         Vector2 desired = fingerWorld + dragOffsetWorld;
         CurrentDragWorldPos = desired;
 
@@ -305,19 +325,9 @@ public class FingerGrabInertia2D : MonoBehaviour
         target.x = Mathf.Clamp(target.x, b.minX, b.maxX);
         target.y = Mathf.Clamp(target.y, b.minY, b.maxY);
 
-        bool clamped = (target.x != desired.x) || (target.y != desired.y);
-
         rb.position = target;
 
-        // Key feature: if the ball is pinned to the bounds, collapse the offset so the finger "reconnects" to the ball.
-        // This makes recovering to the powerup pad after a missed catch much easier.
-        if (relaxOffsetWhenClamped && clamped)
-        {
-            dragOffsetWorld = rb.position - fingerWorld;  // reduce gap to whatever the bounds allow
-            CurrentDragWorldPos = fingerWorld + dragOffsetWorld; // keep bookkeeping consistent
-        }
-
-        // Sample desired (not clamped target) for throw velocity feel
+        // Sample desired (not clamped target) for throw feel
         PushSample(desired, Time.unscaledTime);
     }
 
@@ -328,7 +338,6 @@ public class FingerGrabInertia2D : MonoBehaviour
         IsHeld = false;
         isDragging = false;
 
-        OnDragEnded?.Invoke(WasThrown);
         draggingTouchId = -1;
 
         if (kinematicWhileDragging)
@@ -341,6 +350,7 @@ public class FingerGrabInertia2D : MonoBehaviour
         if (mag > maxThrowSpeed)
             throwVel = throwVel / mag * maxThrowSpeed;
 
+        // Keep your old behavior: only assist if "overlapping wall" (as your older build did)
         if (IsActuallyOverlappingWall())
             throwVel = ApplyWallReleaseAssistPreserveSpeed(throwVel);
 
@@ -358,6 +368,8 @@ public class FingerGrabInertia2D : MonoBehaviour
         }
 
         sampleFilled = 0;
+
+        OnDragEnded?.Invoke(WasThrown);
     }
 
     void CancelDragNoThrow()
@@ -365,7 +377,6 @@ public class FingerGrabInertia2D : MonoBehaviour
         isDragging = false;
         IsHeld = false;
 
-        OnDragEnded?.Invoke(false);
         draggingTouchId = -1;
 
         if (kinematicWhileDragging)
@@ -378,6 +389,8 @@ public class FingerGrabInertia2D : MonoBehaviour
 
         WasThrown = false;
         WasDropped = false;
+
+        OnDragEnded?.Invoke(false);
     }
 
     bool IsTapOnBall(Vector2 screenPos, float speed)
@@ -418,7 +431,9 @@ public class FingerGrabInertia2D : MonoBehaviour
         Bounds2D b = ComputeBounds();
         Vector2 p = rb.position;
 
-        return p.x < b.minX || p.x > b.maxX || p.y < b.minY || p.y > b.maxY;
+        return
+            p.x < b.minX || p.x > b.maxX ||
+            p.y < b.minY || p.y > b.maxY;
     }
 
     Bounds2D ComputeBounds()

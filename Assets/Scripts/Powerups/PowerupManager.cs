@@ -77,6 +77,11 @@ public class PowerupManager : MonoBehaviour
         return TryConsumeIfArmedMatches(PowerupTrigger.EndOfRunOffer);
     }
 
+    public bool TryTrigger_NextThrowRelease()
+    {
+        return TryConsumeIfArmedMatches(PowerupTrigger.NextThrowRelease);
+    }
+
     bool TryConsumeIfArmedMatches(PowerupTrigger trigger)
     {
         if (!HasArmed) return false;

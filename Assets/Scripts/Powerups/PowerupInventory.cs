@@ -19,7 +19,7 @@ public class PowerupInventory : MonoBehaviour
 
     [Header("DEV seed (testing only)")]
     [SerializeField] bool devSeedOnFirstInstall = true;
-    [SerializeField] int devSeedEach = 1;
+    [SerializeField] int devSeedEach = 99;
 
     public event Action OnChanged;
 
@@ -158,7 +158,7 @@ public class PowerupInventory : MonoBehaviour
     [ContextMenu("DEV: Grant 1 of each powerup in database")]
     void DevGrantAll()
     {
-        DevSeedAll(1);
+        DevSeedAll(99);
         SaveToPrefs();
         OnChanged?.Invoke();
         Debug.Log("[PowerupInventory] Granted 1 of each powerup.");

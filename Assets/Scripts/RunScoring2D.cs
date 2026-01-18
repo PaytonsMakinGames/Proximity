@@ -124,6 +124,8 @@ public class RunScoring2D : MonoBehaviour
     [SerializeField] KeyCode cancelRunKey = KeyCode.X;
     [SerializeField] int cancelRunFingerCount = 5;
 
+    [SerializeField] ActionManager actions;
+
     bool cancelGestureArmed = true;
 
     int EffectiveThrowsPerRun
@@ -131,7 +133,7 @@ public class RunScoring2D : MonoBehaviour
         get
         {
             int bonus = inventory ? inventory.GetBonusThrows() : 0;
-            return Mathf.Max(0, throwsPerRun + bonus);
+            return Mathf.Max(0, throwsPerRun + bonus + bonusThrowsThisRun);
         }
     }
 
@@ -168,6 +170,16 @@ public class RunScoring2D : MonoBehaviour
     int catchesThisRun;
     int throwsUsedThisRun;
     bool throwsExhausted;
+    int actionWhiffBonusXp;
+
+    int bonusThrowsThisRun;
+    bool encoreUsedThisRun;
+    bool encoreReviveUsedThisRun;
+    bool EncoreAnyUsedThisRun => encoreUsedThisRun || encoreReviveUsedThisRun;
+
+    // After a run ends, we allow one revive window where XP and Best can adjust.
+    bool pendingRunAdjustActive;
+    float pendingBestBaseline;
 
     int displayedDistance;
 
@@ -237,6 +249,7 @@ public class RunScoring2D : MonoBehaviour
         if (!inventory) inventory = FindFirstObjectByType<PlayerInventory>(FindObjectsInactive.Include);
         if (!xp) xp = FindFirstObjectByType<XpManager>(FindObjectsInactive.Include);
         if (!powerups) powerups = FindFirstObjectByType<PowerupManager>(FindObjectsInactive.Include);
+        if (!actions) actions = FindFirstObjectByType<ActionManager>(FindObjectsInactive.Include);
 
         totalDistance = PlayerPrefs.GetFloat(totalDistanceKey, 0f);
         totalBounces = PlayerPrefs.GetInt(totalBouncesKey, 0);
@@ -318,22 +331,46 @@ public class RunScoring2D : MonoBehaviour
 
         if (throwEvent)
         {
-            bool startedOnBall = grab && grab.LastPickupWasCatch;
-
-            if (!streakActive && !startedOnBall)
+            // Encore triggers on throw release.
+            // If run ended but is still adjustable, it revives the same run and grants +1 max throw.
+            // If run is active, it grants +1 max throw once per run.
+            // Otherwise it disarms without consuming.
+            if (powerups && powerups.HasArmed)
             {
-                RetireActiveLandingVfxOnThrow();
-                suppressResultVisualsUntilThrow = false;
-                landingAllowedThisSegment = false;
-                showLandingInfo = false;
-                shownLandingMult = 1f;
-                HideAll();
+                var def = powerups.GetArmedDef();
+                if (def && def.trigger == PowerupTrigger.NextThrowRelease)
+                {
+                    // Revive last run (post-end window)
+                    if (!streakActive && pendingRunAdjustActive && !EncoreAnyUsedThisRun)
+                    {
+                        if (powerups.TryTrigger_NextThrowRelease())
+                        {
+                            streakActive = true;        // prevents StartStreak inside OnThrown()
+                            resultLatched = false;
+                            encoreReviveUsedThisRun = true;
 
-                if (grab) grab.ConsumeWasThrown();
-                prevWasThrown = false;
+                            bonusThrowsThisRun += 1;
+                            throwsExhausted = false;
+                            UpdateThrowsUi();
 
-                prevHeld = isHeld;
-                return;
+                            stopTimer = 0f;
+                        }
+                    }
+                    // Mid-run boost (once per run)
+                    else if (streakActive && !EncoreAnyUsedThisRun)
+                    {
+                        if (powerups.TryTrigger_NextThrowRelease())
+                        {
+                            encoreUsedThisRun = true;
+                            bonusThrowsThisRun += 1;
+                            UpdateThrowsUi();
+                        }
+                    }
+                    else
+                    {
+                        powerups.Disarm_NoConsume();
+                    }
+                }
             }
 
             OnThrown();
@@ -571,6 +608,7 @@ public class RunScoring2D : MonoBehaviour
         suppressResultVisualsUntilThrow = false;
 
         if (!streakActive) StartStreak();
+        if (actions) actions.OnThrowStarted();
 
         lastRunPos = ballRb.position;
         stopTimer = 0f;
@@ -586,6 +624,14 @@ public class RunScoring2D : MonoBehaviour
 
     void StartStreak()
     {
+        // Starting a brand new run closes the previous run's adjust window.
+        if (pendingRunAdjustActive)
+        {
+            if (xp) xp.EndPendingRunXp();
+            pendingRunAdjustActive = false;
+            pendingBestBaseline = 0f;
+        }
+
         streakActive = true;
         stopTimer = 0f;
 
@@ -598,6 +644,13 @@ public class RunScoring2D : MonoBehaviour
         throwsUsedThisRun = 0;
         throwsExhausted = false;
         UpdateThrowsUi();
+
+        bonusThrowsThisRun = 0;
+        actionWhiffBonusXp = 0;
+        encoreUsedThisRun = false;
+        encoreReviveUsedThisRun = false;
+
+        if (actions) actions.OnRunStarted();
 
         resultLatched = false;
 
@@ -633,6 +686,7 @@ public class RunScoring2D : MonoBehaviour
     void OnPickupStarted()
     {
         bool wasCatch = grab && grab.LastPickupWasCatch;
+        if (actions) actions.OnPickup(wasCatch);
 
         if (wasCatch)
         {
@@ -654,8 +708,6 @@ public class RunScoring2D : MonoBehaviour
 
         stopTimer = 0f;
         landingAllowedThisSegment = false;
-
-        ConsumeThrow(fromMiss: true);
     }
 
     void ConsumeThrow(bool fromMiss)
@@ -741,6 +793,34 @@ public class RunScoring2D : MonoBehaviour
             EndStreak_Stop();
     }
 
+    void ApplyPendingRunRewardsNow(int runXpInt)
+    {
+        runXpInt = Mathf.Max(0, runXpInt);
+
+        // XP: apply now and allow later delta updates (can be negative)
+        if (xp) xp.BeginOrUpdatePendingRunXp(runXpInt);
+
+        // Best: allow rollback but never below the best that existed before this run.
+        if (!pendingRunAdjustActive)
+        {
+            pendingRunAdjustActive = true;
+            pendingBestBaseline = BestScore;
+        }
+
+        float candidate = Mathf.Max(pendingBestBaseline, runXpInt);
+
+        bool changed = !Mathf.Approximately(candidate, BestScore);
+        BestScore = candidate;
+
+        if (changed)
+        {
+            PlayerPrefs.SetFloat("BestScore", BestScore);
+            PlayerPrefs.Save();
+        }
+
+        ApplyBestUI((int)BestScore, BestScore > pendingBestBaseline);
+    }
+
     void EndStreak_DropInstant()
     {
         if (!streakActive) return;
@@ -763,16 +843,7 @@ public class RunScoring2D : MonoBehaviour
         resultLatched = true;
         UpdateScoreText();
 
-        bool isNewBest = false;
-        if (displayedXpInt > BestScore)
-        {
-            BestScore = displayedXpInt;
-            PlayerPrefs.SetFloat("BestScore", BestScore);
-            isNewBest = true;
-        }
-
-        ApplyBestUI((int)BestScore, isNewBest);
-        AwardXp(displayedXpInt);
+        ApplyPendingRunRewardsNow(displayedXpInt);
 
         SaveTotalsIfDirty(true);
         UpdateTotalsUI();
@@ -780,6 +851,8 @@ public class RunScoring2D : MonoBehaviour
         HideAll();
         showLandingInfo = false;
         shownLandingMult = 1f;
+
+        if (actions) actions.OnRunEnded();
     }
 
     void EndStreak_Stop()
@@ -814,16 +887,7 @@ public class RunScoring2D : MonoBehaviour
         resultLatched = true;
         UpdateScoreText();
 
-        bool isNewBest = false;
-        if (displayedXpInt > BestScore)
-        {
-            BestScore = displayedXpInt;
-            PlayerPrefs.SetFloat("BestScore", BestScore);
-            isNewBest = true;
-        }
-
-        ApplyBestUI((int)BestScore, isNewBest);
-        AwardXp(displayedXpInt);
+        ApplyPendingRunRewardsNow(displayedXpInt);
 
         SaveTotalsIfDirty(true);
         UpdateTotalsUI();
@@ -832,7 +896,10 @@ public class RunScoring2D : MonoBehaviour
         if (landingShownToPlayer)
         {
             StartNewLandingVfx(followBall: true);
-            if (isNewBest) SetLandingVfxColor(activeLandingPs, bestBeatenColor);
+
+            // Best highlight is determined by current BestScore vs baseline
+            if (pendingRunAdjustActive && BestScore > pendingBestBaseline)
+                SetLandingVfxColor(activeLandingPs, bestBeatenColor);
         }
         else
         {
@@ -842,6 +909,8 @@ public class RunScoring2D : MonoBehaviour
             showLandingInfo = false;
             shownLandingMult = 1f;
         }
+
+        if (actions) actions.OnRunEnded();
     }
 
     void AwardXp(int xpToAdd)
@@ -969,6 +1038,106 @@ public class RunScoring2D : MonoBehaviour
         UpdateRulersAndBallLabel(true, pos, b, horizAlpha, vertAlpha);
     }
 
+    // ---------------- Land Mult Prediction ----------------
+
+    // Fold a point into [min,max] with mirror reflections (unfolded space -> real space).
+    static float FoldMirrored(float x, float min, float max)
+    {
+        float w = max - min;
+        if (w <= 0f) return min;
+
+        float t = (x - min) / w;
+        t = Mathf.Repeat(t, 2f);         // [0,2)
+        if (t > 1f) t = 2f - t;          // mirror [1,2) back to [0,1]
+        return min + t * w;
+    }
+
+    // Predict where the ball would come to rest if it was NOT picked up.
+    // Assumes axis-aligned bounds and linear damping.
+    public Vector2 PredictStopPosition(Vector2 posNow, Vector2 velNow)
+    {
+        // You must use the same stop threshold you already use to end a run.
+        float stopSpeed = this.stopSpeed;        // <-- this field exists in your scoring script already
+        float d = ballRb ? ballRb.linearDamping : 0f;
+
+        float v0 = velNow.magnitude;
+        if (v0 <= stopSpeed || v0 <= 0.0001f)
+            return posNow;
+
+        if (d <= 0.0001f)
+        {
+            // If there is no damping, your game can’t stop deterministically.
+            // Fall back to "no prediction" (treat as not good) rather than lying.
+            return posNow;
+        }
+
+        // With linear damping v(t)=v0*e^(-d t). Stop when v<=stopSpeed.
+        // Total travel distance along the unfolded straight line:
+        // s = (v0 - stopSpeed) / d
+        float s = (v0 - stopSpeed) / d;
+
+        Vector2 dir = velNow / v0;
+        Vector2 unfoldedEnd = posNow + dir * s;
+
+        // Use the same world bounds as your ball uses (camera bounds minus radius/inset).
+        // If you already have a method/values for these bounds, use those.
+        // Here we derive them from camera like your other code does.
+        Camera cam = Camera.main;
+        if (!cam || !ballRb) return posNow;
+
+        float z = cam.WorldToScreenPoint(ballRb.position).z;
+        Vector2 bl = cam.ViewportToWorldPoint(new Vector3(0f, 0f, z));
+        Vector2 tr = cam.ViewportToWorldPoint(new Vector3(1f, 1f, z));
+
+        // Apply same inset & radius logic you use elsewhere
+        float r = ballCollider ? (ballCollider.radius * Mathf.Max(ballRb.transform.lossyScale.x, ballRb.transform.lossyScale.y)) : 0f;
+        float minX = bl.x + boundsInset + r;
+        float maxX = tr.x - boundsInset - r;
+        float minY = bl.y + boundsInset + r;
+        float maxY = tr.y - boundsInset - r;
+
+        return new Vector2(
+            FoldMirrored(unfoldedEnd.x, minX, maxX),
+            FoldMirrored(unfoldedEnd.y, minY, maxY)
+        );
+    }
+
+    public float PredictTimeToStopFromSpeed(float speedNow)
+    {
+        float stopSpeed = showBelowSpeed;
+        float d = ballRb ? ballRb.linearDamping : 0f;
+
+        if (speedNow <= stopSpeed) return 0f;
+        if (d <= 0.0001f) return Mathf.Infinity;
+
+        return Mathf.Log(speedNow / stopSpeed) / d;
+    }
+
+    public float GetLandingMultiplierAt(Vector2 worldPos)
+    {
+        WorldBounds b = ComputeBounds();
+        GetCenterNormalized(worldPos, b, out float nx, out float ny);
+
+        bool capped = streakActive && ShouldCapRightNow();
+
+        float edgeValue = capped ? cappedEdgeValue : normalEdgeValue;
+        float cornerTotal = capped ? cappedCornerTotal : normalCornerTotal;
+        float cornerBoost = cornerTotal - edgeValue;
+
+        float e = Mathf.Max(0.0001f, closenessExponent);
+
+        float ax = Mathf.Pow(Mathf.Clamp01(nx), e);
+        float ay = Mathf.Pow(Mathf.Clamp01(ny), e);
+
+        float edge = Mathf.Max(ax, ay);
+        float corner = ax * ay;
+
+        float m = (edgeValue * edge) + (cornerBoost * corner);
+        if (m < 0.01f) m = 0f;
+
+        return Mathf.Clamp(m, 0f, maxMultiplier);
+    }
+
     // ---------------- UI ----------------
 
     string CatchLineText(float multShown)
@@ -994,13 +1163,20 @@ public class RunScoring2D : MonoBehaviour
         xpMultShown = Round2(GetXpMultRaw());
         xpPct = Mathf.RoundToInt((xpMultShown - 1f) * 100f);
 
-        float rawTotal = distInt * catchShown * landingShown * xpMultShown;
+        float rawTotal = (distInt * catchShown * landingShown * xpMultShown) + actionWhiffBonusXp;
+
         xpTotal = Mathf.RoundToInt(rawTotal);
 
         baseScore = Mathf.RoundToInt(distInt * catchShown * landingShown);
 
         lastLiveXpMultShown = xpMultShown;
         lastLiveXpPct = xpPct;
+    }
+
+    public void AddActionWhiffXp(int amount)
+    {
+        if (amount <= 0) return;
+        actionWhiffBonusXp += amount;
     }
 
     void UpdateScoreText()
@@ -1356,6 +1532,7 @@ public class RunScoring2D : MonoBehaviour
         HideAll();
 
         if (scoreText) scoreText.text = "";
+        if (actions) actions.OnRunEnded();
     }
 
     // ---------------- Timing ----------------
@@ -1400,6 +1577,14 @@ public class RunScoring2D : MonoBehaviour
     {
         nx = Mathf.Clamp01(Mathf.Abs(pos.x - b.centerX) / b.halfW);
         ny = Mathf.Clamp01(Mathf.Abs(pos.y - b.centerY) / b.halfH);
+    }
+
+    public float GetFieldScaleForNormalization()
+    {
+        WorldBounds b = ComputeBounds();
+        float w = Mathf.Max(0.0001f, b.right - b.left);
+        float h = Mathf.Max(0.0001f, b.top - b.bottom);
+        return w + h;
     }
 
 #if UNITY_EDITOR

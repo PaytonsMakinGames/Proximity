@@ -370,12 +370,12 @@ public class PowerupRadialMenuController : MonoBehaviour
 
         if (!manager || string.IsNullOrEmpty(manager.ArmedId))
         {
-            armedLabel.text = "ARMED: none";
+            armedLabel.text = "None";
             return;
         }
 
         var def = manager.GetArmedDef();
         string name = (def && !string.IsNullOrEmpty(def.displayName)) ? def.displayName : manager.ArmedId;
-        armedLabel.text = $"ARMED: {name}";
+        armedLabel.text = $"{name}";
     }
 }
