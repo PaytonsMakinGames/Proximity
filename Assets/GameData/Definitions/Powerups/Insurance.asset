@@ -14,10 +14,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PowerupDefinition
   id: insurance
   displayName: Insurance
-  trigger: 1
+  trigger: 4
   icon: {fileID: 0}
   description: 
   f0: 0
   f1: 0
   i0: 0
   i1: 0
+  uiColor: {r: 0.8509804, g: 1, b: 0.8509804, a: 1}

@@ -11,6 +11,8 @@ public class ScreenBounds2D : MonoBehaviour
     public bool useWallsLayer = true;
     public string wallsLayerName = "Walls";
 
+    float left, right, bottom, top;
+
     int lastW, lastH;
     Camera cam;
 
@@ -43,10 +45,10 @@ public class ScreenBounds2D : MonoBehaviour
         Vector2 bl = cam.ViewportToWorldPoint(new Vector3(0f, 0f, 0f));
         Vector2 tr = cam.ViewportToWorldPoint(new Vector3(1f, 1f, 0f));
 
-        float left = bl.x + inset;
-        float right = tr.x - inset;
-        float bottom = bl.y + inset;
-        float top = tr.y - inset;
+        left = bl.x + inset;
+        right = tr.x - inset;
+        bottom = bl.y + inset;
+        top = tr.y - inset;
 
         float width = right - left;
         float height = top - bottom;
@@ -94,5 +96,11 @@ public class ScreenBounds2D : MonoBehaviour
         var col = go.AddComponent<BoxCollider2D>();
         col.size = size;
         col.sharedMaterial = wallMaterial;
+    }
+
+    public void GetPlayableWorldRect(out Vector2 min, out Vector2 max)
+    {
+        min = new Vector2(left, bottom);
+        max = new Vector2(right, top);
     }
 }

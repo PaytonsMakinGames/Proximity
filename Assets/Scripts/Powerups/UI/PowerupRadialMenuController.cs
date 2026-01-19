@@ -207,6 +207,20 @@ public class PowerupRadialMenuController : MonoBehaviour
             {
                 ui.iconImage.sprite = def.icon;
                 ui.iconImage.enabled = (def.icon != null);
+                ui.iconImage.color = def.uiColor;
+            }
+            if (ui.highlight)
+            {
+                Color c = def.uiColor;
+                c.a = 1f;                 // full alpha for highlight
+                ui.highlight.color = c;
+            }
+            if (ui.background)
+            {
+                Color c = def.uiColor;
+                c.a = 0.45f;              // tweak to taste
+                ui.background.color = c;
+                ui.background.enabled = true;
             }
 
             ui.SetCount(inventory.GetCount(def.id));

@@ -239,6 +239,10 @@ public class FingerGrabInertia2D : MonoBehaviour
         Vector2 v = rb.linearVelocity;
         float speed = v.magnitude;
 
+        // If any system pinned the ball (ex: Sticky Ball), clear it so dragging/throwing works normally.
+        if (rb.constraints != RigidbodyConstraints2D.None)
+            rb.constraints = RigidbodyConstraints2D.None;
+
         LastPickupSpeed = speed;
         LastPickupVelocity = v;
         LastPickupPosition = rb.position;

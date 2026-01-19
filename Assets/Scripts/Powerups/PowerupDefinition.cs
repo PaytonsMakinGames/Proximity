@@ -21,4 +21,6 @@ public class PowerupDefinition : ScriptableObject
     public float f1;
     public int i0;
     public int i1;
+
+    public Color uiColor = Color.white;
 }

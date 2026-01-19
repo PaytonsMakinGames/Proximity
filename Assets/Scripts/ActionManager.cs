@@ -313,6 +313,18 @@ public class ActionManager : MonoBehaviour
         }
     }
 
+    string GetActionDisplayName(string actionId)
+    {
+        switch (actionId)
+        {
+            case "WallFrenzy": return "Wall Frenzy";
+            case "QuickCatch": return "Quick Catch";
+            case "Greed": return "Greed";
+            case "Desperation": return "Desperation";
+            default: return actionId;
+        }
+    }
+
     void AwardActionDrop(string actionId)
     {
         if (!inventory) return;
@@ -339,11 +351,10 @@ public class ActionManager : MonoBehaviour
 
             if (popups)
             {
-                popups.PopAtWorldWithExtraOffset(where, $"{actionId}!", actionColor, new Vector2(0f, 0f));
+                string actionName = GetActionDisplayName(actionId);
+                popups.PopAtWorldWithExtraOffset(where, $"{actionName}!", actionColor, new Vector2(0f, 0f));
                 popups.PopAtWorldWithExtraOffset(where, $"+10 XP", COLOR_XP, new Vector2(0f, -60f));
             }
-
-            Debug.Log($"[ActionManager] {actionId} → nothing");
             return;
         }
 
@@ -359,10 +370,9 @@ public class ActionManager : MonoBehaviour
 
         if (popups)
         {
-            popups.PopAtWorldWithExtraOffset(where, $"{actionId}!", actionColor, new Vector2(0f, 0f));
+            string actionName = GetActionDisplayName(actionId);
+            popups.PopAtWorldWithExtraOffset(where, $"{actionName}!", actionColor, new Vector2(0f, 0f));
             popups.PopAtWorldWithExtraOffset(where, $"+1 {prettyName}", COLOR_ITEM, new Vector2(0f, -60f));
         }
-
-        Debug.Log($"[ActionManager] {actionId} → +1 {id}");
     }
 }
