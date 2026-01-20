@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PowerupDefinition
   id: hot_spot
   displayName: Hot Spot
-  trigger: 1
+  trigger: 4
   icon: {fileID: 0}
   description: 
   f0: 0

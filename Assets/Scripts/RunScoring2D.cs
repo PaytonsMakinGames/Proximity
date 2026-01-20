@@ -165,6 +165,31 @@ public class RunScoring2D : MonoBehaviour
     float stickyThrowDistance;
     Vector2 stickyThrowLastPos;
 
+    [Header("Hot Spot (v1)")]
+    [SerializeField] string hotSpotId = "hot_spot";
+
+    // Visuals (world objects)
+    [SerializeField] Transform hotSpotMarker;   // circle sprite object
+    [SerializeField] TextMeshPro hotSpotText;   // text centered in circle
+    [SerializeField] Color hotSpotColor = new Color(1f, 0.75f, 0.75f, 1f);
+
+    // Gameplay tuning
+    [SerializeField, Min(0.05f)] float hotSpotRadiusStart = 0.9f;
+    [SerializeField, Range(0.5f, 0.99f)] float hotSpotShrinkFactorPerHit = 0.94f;
+    [SerializeField, Min(0.05f)] float hotSpotMinRadius = 0.25f;
+
+    [SerializeField, Min(0f)] float hotSpotMinHitSpeed = 0.75f;
+    [SerializeField, Min(0)] int hotSpotDistancePerHit = 50;
+
+
+    // Runtime state
+    bool hotSpotUsedThisRun;
+    bool hotSpotSpawnedThisRun;
+    bool hotSpotInside;
+    Vector2 hotSpotCenter;
+    float hotSpotRadius;
+    int hotSpotBonusDistanceThisRun;
+
     [Header("Run Cancel")]
     [SerializeField] KeyCode cancelRunKey = KeyCode.X;
     [SerializeField] int cancelRunFingerCount = 5;
@@ -203,9 +228,6 @@ public class RunScoring2D : MonoBehaviour
     float catchMultiplier = 1f;
 
     float laneCenterX, laneCenterY;
-
-    float displayedCatchMult = 1f;
-    float displayedLandingMult = 1f;
     float shownLandingMult = 1f;
 
     float nextUiTick;
@@ -215,7 +237,6 @@ public class RunScoring2D : MonoBehaviour
     int catchesThisRun;
     int throwsUsedThisRun;
     bool throwsExhausted;
-    int actionWhiffBonusXp;
 
     int bonusThrowsThisRun;
     bool encoreUsedThisRun;
@@ -225,8 +246,6 @@ public class RunScoring2D : MonoBehaviour
     // After a run ends, we allow one revive window where XP and Best can adjust.
     bool pendingRunAdjustActive;
     float pendingBestBaseline;
-
-    int displayedDistance;
 
     bool totalsDirty;
     bool streakActive;
@@ -240,17 +259,6 @@ public class RunScoring2D : MonoBehaviour
     bool prevWasDropped;
     bool landingAllowedThisSegment;
     bool suppressResultVisualsUntilThrow;
-
-    int lastLiveRunScoreInt;
-    int displayedRunScoreInt;
-
-    int lastLiveXpInt;
-    int displayedXpInt;
-
-    float lastLiveXpMultShown = 1f;
-    int lastLiveXpPct = 0;
-
-    int displayedXpPct = 0;
 
     // VFX state
     ParticleSystem activeLandingPs;
@@ -365,6 +373,7 @@ public class RunScoring2D : MonoBehaviour
             activeLandingPs.transform.position = BallPosWithVfxZ();
 
         bool isHeld = !pausedOrLocked && grab && grab.IsDragging;
+        UpdateHotSpotHitState(isHeld);
         bool wasThrownFlag = !pausedOrLocked && grab && grab.WasThrown;
         bool wasDroppedFlag = !pausedOrLocked && grab && grab.WasDropped;
 
@@ -426,6 +435,44 @@ public class RunScoring2D : MonoBehaviour
                         else
                         {
                             powerups.Disarm_NoConsume();
+                        }
+                    }
+                    else if (def.id == hotSpotId)
+                    {
+                        // Only once per run. If already used, just disarm.
+                        if (hotSpotUsedThisRun)
+                        {
+                            powerups.Disarm_NoConsume();
+                        }
+                        else
+                        {
+                            if (powerups.TryTrigger_NextThrowRelease())
+                            {
+                                hotSpotUsedThisRun = true;
+                                hotSpotSpawnedThisRun = true;
+
+                                hotSpotCenter = ballRb ? ballRb.position : hotSpotCenter;
+                                hotSpotRadius = hotSpotRadiusStart;
+                                hotSpotInside = false;
+                                hotSpotBonusDistanceThisRun = 0;
+
+                                HotSpot_SetVisualsActive(true);
+                                HotSpot_UpdateVisuals();
+
+                                // Prevent instant hit if ball starts inside
+                                hotSpotInside = ballRb ? IsBallOverlappingHotSpot(ballRb.position) : false;
+
+                                if (popups && ballRb)
+                                {
+                                    Vector2 p = ballRb.position;
+                                    popups.PopAtWorldWithExtraOffset(p, "Hot Spot!", hotSpotColor, new Vector2(0f, 0f));
+                                    popups.PopAtWorldWithExtraOffset(p, $"+{hotSpotDistancePerHit}d per hit", hotSpotColor, new Vector2(0f, -60f));
+                                }
+                            }
+                            else
+                            {
+                                powerups.Disarm_NoConsume();
+                            }
                         }
                     }
                     // Encore (existing behavior)
@@ -800,6 +847,94 @@ public class RunScoring2D : MonoBehaviour
         stickyThrowDistance = 0f;
     }
 
+    // ---------------- Hot Spot ----------------
+
+    void HotSpot_SetVisualsActive(bool on)
+    {
+        if (hotSpotMarker) hotSpotMarker.gameObject.SetActive(on);
+        if (!on && hotSpotText) hotSpotText.text = "";
+    }
+
+    void HotSpot_UpdateVisuals()
+    {
+        if (hotSpotMarker)
+        {
+            hotSpotMarker.position = hotSpotCenter;
+
+            float d = hotSpotRadius * 2f;
+            hotSpotMarker.localScale = new Vector3(d, d, 1f);
+
+            var sr = hotSpotMarker.GetComponent<SpriteRenderer>();
+            if (sr) sr.color = hotSpotColor;
+        }
+
+        if (hotSpotText)
+            hotSpotText.text = $"+{hotSpotBonusDistanceThisRun}d";
+    }
+
+    void ClearHotSpotAll()
+    {
+        hotSpotUsedThisRun = false;
+        hotSpotSpawnedThisRun = false;
+
+        hotSpotInside = false;
+        hotSpotCenter = Vector2.zero;
+        hotSpotRadius = 0f;
+        hotSpotBonusDistanceThisRun = 0;
+
+        HotSpot_SetVisualsActive(false);
+    }
+
+    // Overlap test: ball circle vs hot spot circle
+    bool IsBallOverlappingHotSpot(Vector2 ballCenter)
+    {
+        if (!hotSpotSpawnedThisRun) return false;
+
+        WorldBounds b = ComputeBounds();
+        float ballR = b.r;
+
+        float rSum = hotSpotRadius + ballR;
+        return (ballCenter - hotSpotCenter).sqrMagnitude <= (rSum * rSum);
+    }
+
+    // Call every frame to detect outside->inside entry hits
+    void UpdateHotSpotHitState(bool isHeld)
+    {
+        if (!streakActive) return;
+        if (!hotSpotSpawnedThisRun) return;
+        if (!ballRb) return;
+
+        // Don’t count while held, but keep state synced
+        if (isHeld)
+        {
+            hotSpotInside = IsBallOverlappingHotSpot(ballRb.position);
+            return;
+        }
+
+        bool insideNow = IsBallOverlappingHotSpot(ballRb.position);
+
+        // Count a hit only on outside->inside transition
+        if (insideNow && !hotSpotInside)
+        {
+            float speed = ballRb.linearVelocity.magnitude;
+            if (speed >= hotSpotMinHitSpeed)
+            {
+                travelDistance += hotSpotDistancePerHit;
+                hotSpotBonusDistanceThisRun += hotSpotDistancePerHit;
+
+                // Shrink each hit
+                hotSpotRadius = Mathf.Max(hotSpotMinRadius, hotSpotRadius * hotSpotShrinkFactorPerHit);
+
+                HotSpot_UpdateVisuals();
+
+                if (popups)
+                    popups.PopAtWorldWithExtraOffset(hotSpotCenter, $"+{hotSpotDistancePerHit}d", hotSpotColor, new Vector2(0f, 0f));
+            }
+        }
+
+        hotSpotInside = insideNow;
+    }
+
     // ---------------- Events ----------------
 
     void OnAnyPickupStarted()
@@ -852,6 +987,9 @@ public class RunScoring2D : MonoBehaviour
         shownLandingMult = 1f;
 
         landingAllowedThisSegment = true;
+
+        if (hotSpotSpawnedThisRun && ballRb)
+            hotSpotInside = IsBallOverlappingHotSpot(ballRb.position);
     }
 
     void StartStreak()
@@ -878,7 +1016,6 @@ public class RunScoring2D : MonoBehaviour
         UpdateThrowsUi();
 
         bonusThrowsThisRun = 0;
-        actionWhiffBonusXp = 0;
         encoreUsedThisRun = false;
         encoreReviveUsedThisRun = false;
 
@@ -886,9 +1023,7 @@ public class RunScoring2D : MonoBehaviour
 
         resultLatched = false;
 
-        displayedDistance = 0;
-        displayedCatchMult = 1f;
-        displayedLandingMult = 1f;
+        latchedSnapshot = default;
 
         showLandingInfo = false;
         shownLandingMult = 1f;
@@ -899,17 +1034,6 @@ public class RunScoring2D : MonoBehaviour
         suppressResultVisualsUntilThrow = false;
 
         laneBroken = false;
-
-        lastLiveRunScoreInt = 0;
-        displayedRunScoreInt = 0;
-
-        lastLiveXpInt = 0;
-        displayedXpInt = 0;
-
-        lastLiveXpMultShown = 1f;
-        lastLiveXpPct = 0;
-
-        displayedXpPct = 0;
 
         if (scoreText) scoreText.text = "";
         HideAll();
@@ -1072,6 +1196,7 @@ public class RunScoring2D : MonoBehaviour
     {
         if (!streakActive) return;
         ClearStickyIfAny();
+        ClearHotSpotAll();
 
         streakActive = false;
         if (powerups) powerups.OnRunEnded();
@@ -1079,19 +1204,16 @@ public class RunScoring2D : MonoBehaviour
 
         BankRemainingDistance();
 
-        displayedDistance = RoundInt(travelDistance);
-        displayedCatchMult = Round3(catchMultiplier);
-        displayedLandingMult = 1f;
+        int distInt = RoundInt(travelDistance);
+        float catchShown = Round3(catchMultiplier);
+        float landingShown = 1f;
+        float xpMultShown = Round2(GetXpMultRaw());
 
-        displayedRunScoreInt = lastLiveRunScoreInt;
-        displayedXpInt = lastLiveXpInt;
-
-        displayedXpPct = lastLiveXpPct;
-
+        latchedSnapshot = BuildSnapshot(distInt, catchShown, landingShown, xpMultShown);
         resultLatched = true;
-        UpdateScoreText();
 
-        ApplyPendingRunRewardsNow(displayedXpInt);
+        UpdateScoreText();
+        ApplyPendingRunRewardsNow(latchedSnapshot.xpTotal);
 
         SaveTotalsIfDirty(true);
         UpdateTotalsUI();
@@ -1112,31 +1234,27 @@ public class RunScoring2D : MonoBehaviour
         if (powerups) powerups.OnRunEnded();
         BankRemainingDistance();
 
-        displayedDistance = RoundInt(travelDistance);
-        displayedCatchMult = Round3(catchMultiplier);
-
         bool landingShownToPlayer = landingAllowedThisSegment && showLandingInfo;
 
         if (!landingShownToPlayer)
         {
             lastRunNoLanding = true;
-            displayedLandingMult = 1f;
         }
         else
         {
             lastRunNoLanding = false;
-            displayedLandingMult = Round2(shownLandingMult);
         }
 
-        displayedRunScoreInt = lastLiveRunScoreInt;
-        displayedXpInt = lastLiveXpInt;
+        int distInt = RoundInt(travelDistance);
+        float catchShown = Round3(catchMultiplier);
+        float landingShown = landingShownToPlayer ? Round2(shownLandingMult) : 1f;
+        float xpMultShown = Round2(GetXpMultRaw());
 
-        displayedXpPct = lastLiveXpPct;
-
+        latchedSnapshot = BuildSnapshot(distInt, catchShown, landingShown, xpMultShown);
         resultLatched = true;
-        UpdateScoreText();
 
-        ApplyPendingRunRewardsNow(displayedXpInt);
+        UpdateScoreText();
+        ApplyPendingRunRewardsNow(latchedSnapshot.xpTotal);
 
         SaveTotalsIfDirty(true);
         UpdateTotalsUI();
@@ -1160,6 +1278,7 @@ public class RunScoring2D : MonoBehaviour
         }
 
         if (actions) actions.OnRunEnded();
+        ClearHotSpotAll();
     }
 
     void AwardXp(int xpToAdd)
@@ -1301,7 +1420,7 @@ public class RunScoring2D : MonoBehaviour
 
         if (showLandingInfo)
         {
-            if (resultLatched) shownLandingMult = displayedLandingMult;
+            if (resultLatched) shownLandingMult = latchedSnapshot.landingShown;
             else shownLandingMult = ComputeLandingMultiplier(streakActive && ShouldCapRightNow());
         }
         else shownLandingMult = 1f;
@@ -1442,37 +1561,56 @@ public class RunScoring2D : MonoBehaviour
         return $"{n} {(n == 1 ? "catch" : "catches")} x{multShown:F3}";
     }
 
-    void ComputeLiveNumbers(
-        out int distInt,
-        out float catchShown,
-        out float landingShown,
-        out int baseScore,
-        out int xpTotal,
-        out float xpMultShown,
-        out int xpPct)
+    struct RunSnapshot
     {
-        distInt = RoundInt(travelDistance);
+        public int distInt;
+        public float catchShown;
+        public float landingShown;
+        public float xpMultShown;
+        public int xpPct;
+        public int xpTotal;   // this is THE score (score == xp)
+    }
 
-        catchShown = Round3(catchMultiplier);
-        landingShown = showLandingInfo ? Round2(shownLandingMult) : 1f;
+    RunSnapshot latchedSnapshot; // add this as a field near your other state
 
-        xpMultShown = Round2(GetXpMultRaw());
-        xpPct = Mathf.RoundToInt((xpMultShown - 1f) * 100f);
+    RunSnapshot BuildSnapshot(int distInt, float catchShown, float landingShown, float xpMultShown)
+    {
+        RunSnapshot s = default;
 
-        float rawTotal = (distInt * catchShown * landingShown * xpMultShown) + actionWhiffBonusXp;
+        s.distInt = Mathf.Max(0, distInt);
+        s.catchShown = catchShown;
+        s.landingShown = landingShown;
 
-        xpTotal = Mathf.RoundToInt(rawTotal);
+        s.xpMultShown = xpMultShown;
+        s.xpPct = Mathf.RoundToInt((xpMultShown - 1f) * 100f);
 
-        baseScore = Mathf.RoundToInt(distInt * catchShown * landingShown);
+        float raw = (s.distInt * s.catchShown * s.landingShown * s.xpMultShown);
+        s.xpTotal = Mathf.RoundToInt(raw);
 
-        lastLiveXpMultShown = xpMultShown;
-        lastLiveXpPct = xpPct;
+        return s;
+    }
+
+    RunSnapshot BuildLiveSnapshot()
+    {
+        int distInt = RoundInt(travelDistance);
+        float catchShown = Round3(catchMultiplier);
+        float landingShown = showLandingInfo ? Round2(shownLandingMult) : 1f;
+
+        float xpMultShown = Round2(GetXpMultRaw());
+
+        return BuildSnapshot(distInt, catchShown, landingShown, xpMultShown);
     }
 
     public void AddActionWhiffXp(int amount)
     {
         if (amount <= 0) return;
-        actionWhiffBonusXp += amount;
+        if (!streakActive) return;
+
+        travelDistance += amount;
+
+        BankDistance(amount);
+        UpdateTotalsUI_LiveBanked();
+        SaveTotalsIfDirty(false);
     }
 
     void UpdateScoreText()
@@ -1488,81 +1626,34 @@ public class RunScoring2D : MonoBehaviour
             return;
         }
 
-        string details;
-        int redXpTotal;
+        RunSnapshot s = streakActive ? BuildLiveSnapshot() : latchedSnapshot;
 
-        if (streakActive)
+        bool showCatchLine = catchesThisRun > 0;
+        bool showLandLine = ended ? !lastRunNoLanding : showLandingInfo;
+
+        string detailsText = $"{s.distInt}";
+        if (showCatchLine) detailsText += $"\n{CatchLineText(s.catchShown)}";
+        if (showLandLine) detailsText += $"\nland x{s.landingShown:0.00}";
+
+        if (s.xpPct != 0)
         {
-            ComputeLiveNumbers(out int distInt, out float catchShown, out float landingShown, out int baseScore,
-                out int xpTotal, out float xpMultShown, out int xpPct);
-
-            lastLiveRunScoreInt = baseScore;
-            lastLiveXpInt = xpTotal;
-
-            bool showCatchLine = catchesThisRun > 0;
-            bool showLandLine = showLandingInfo;
-
-            details = $"{distInt}";
-            if (showCatchLine) details += $"\n{CatchLineText(catchShown)}";
-            if (showLandLine) details += $"\nland x{landingShown:0.00}";
-
-            if (xpPct != 0)
-            {
-                string xpLine = xpPct > 0 ? $"+{xpPct}% XP" : $"{xpPct}% XP";
-                details += $"\n{xpLine}";
-            }
-
-            redXpTotal = xpTotal;
-
-            bool somethingBeyondDistance =
-                (catchesThisRun > 0) ||
-                (showLandingInfo && Round2(shownLandingMult) != 1f) ||
-                (xpPct != 0);
-
-            if (!somethingBeyondDistance)
-            {
-                scoreText.text = details;
-                return;
-            }
-
-            scoreText.text =
-                $"{details}\n\n" +
-                $"<color={SCORE_VALUE_COLOR}>{redXpTotal}</color>";
-            return;
+            string xpLine = s.xpPct > 0 ? $"+{s.xpPct}% XP" : $"{s.xpPct}% XP";
+            detailsText += $"\n{xpLine}";
         }
 
-        // Latched result
-        {
-            bool showCatchLine = catchesThisRun > 0;
-            bool showLandLine = !lastRunNoLanding;
+        bool somethingBeyondDistance =
+            showCatchLine ||
+            (showLandLine && s.landingShown != 1f) ||
+            (s.xpPct != 0);
 
-            details = $"{displayedDistance}";
-            if (showCatchLine) details += $"\n{CatchLineText(displayedCatchMult)}";
-            if (showLandLine) details += $"\nland x{displayedLandingMult:0.00}";
+        string fullText = detailsText;
 
-            if (displayedXpPct != 0)
-            {
-                string xpLine = displayedXpPct > 0 ? $"+{displayedXpPct}% XP" : $"{displayedXpPct}% XP";
-                details += $"\n{xpLine}";
-            }
+        if (somethingBeyondDistance)
+            fullText = $"{detailsText}\n\n<color={SCORE_VALUE_COLOR}>{s.xpTotal}</color>";
 
-            redXpTotal = displayedXpInt;
-
-            bool somethingBeyondDistance =
-                (catchesThisRun > 0) ||
-                (!lastRunNoLanding && displayedLandingMult != 1f) ||
-                (displayedXpPct != 0);
-
-            string full = details;
-            if (somethingBeyondDistance)
-            {
-                full =
-                    $"{details}\n\n" +
-                    $"<color={SCORE_VALUE_COLOR}>{redXpTotal}</color>";
-            }
-
-            scoreText.text = $"<color={DETAILS_DIM_COLOR}>{full}</color>";
-        }
+        scoreText.text = ended
+            ? $"<color={DETAILS_DIM_COLOR}>{fullText}</color>"
+            : fullText;
     }
 
     void RefreshAllUI()
@@ -1793,6 +1884,7 @@ public class RunScoring2D : MonoBehaviour
         resultLatched = false;
         lastRunNoLanding = false;
         ClearStickyIfAny();
+        ClearHotSpotAll();
 
         stopTimer = 0f;
         travelDistance = 0f;
@@ -1803,9 +1895,7 @@ public class RunScoring2D : MonoBehaviour
         throwsExhausted = false;
         UpdateThrowsUi();
 
-        displayedDistance = 0;
-        displayedCatchMult = 1f;
-        displayedLandingMult = 1f;
+        latchedSnapshot = default;
 
         showLandingInfo = false;
         shownLandingMult = 1f;
@@ -1813,17 +1903,6 @@ public class RunScoring2D : MonoBehaviour
         suppressResultVisualsUntilThrow = false;
 
         laneBroken = false;
-
-        lastLiveRunScoreInt = 0;
-        displayedRunScoreInt = 0;
-
-        lastLiveXpInt = 0;
-        displayedXpInt = 0;
-
-        lastLiveXpMultShown = 1f;
-        lastLiveXpPct = 0;
-
-        displayedXpPct = 0;
 
         PauseLandingVfxIfAny();
         HideAll();
