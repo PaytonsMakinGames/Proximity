@@ -67,26 +67,6 @@ public class RunScoring2D : MonoBehaviour
     [SerializeField] float closenessExponent = 2.0f;
     [SerializeField] float maxMultiplier = 4.0f;
 
-    [Header("Landing Amplifier (v1)")]
-    [SerializeField] string landingAmplifierId = "landing_amplifier";
-
-    // How the curve changes when Landing Amplifier is active THIS THROW
-    [SerializeField] float landingAmpExponent = 5.5f;          // heavier toward 0 than normal
-
-    // How much to boost the current shape (works for both capped and uncapped)
-    [SerializeField] float landingAmpEdgeMult = 2.0f;   // 2x -> 4x
-    [SerializeField] float landingAmpCornerMult = 1.5f; // 4x -> 6x
-    [SerializeField] float landingAmpMaxMultiplier = 6.0f;
-
-    bool landingAmpActiveThisThrow;
-    public bool LandingAmpActiveThisThrow => landingAmpActiveThisThrow;
-
-    [Header("Insurance (v1)")]
-    [SerializeField] string insuranceId = "insurance";
-
-    bool insuranceActiveThisThrow;
-    public bool InsuranceActiveThisThrow => insuranceActiveThisThrow;
-
     [Header("Normal Shape (Uncapped)")]
     [SerializeField] float normalEdgeValue = 2f;
     [SerializeField] float normalCornerTotal = 5f;
@@ -143,17 +123,9 @@ public class RunScoring2D : MonoBehaviour
     [Header("Popups (optional)")]
     [SerializeField] FloatingPopupSystem popups;
 
-    [Header("Sticky Ball (v1)")]
-    [SerializeField] string stickyBallId = "sticky_ball";
-    [Tooltip("If true, we push stopTimer close to the end so the run ends almost immediately.")]
-    [SerializeField] bool stickyEndsRunFast = true;
-    [SerializeField] Color stickyPopupColor = new Color(0.75f, 0.9f, 1f, 1f);
-    [SerializeField] Color landingAmpPopupColor = new Color(0.85f, 0.9f, 1f, 1f);
-    [SerializeField] Color encorePopupColor = new Color(1f, 0.9f, 0.75f, 1f);
-
     [Header("Sticky Ball Anti-Exploit")]
     [SerializeField, Min(0.01f)]
-    float stickyFullDistanceForNormalLanding = 2.0f; // tune this
+    float stickyFullDistanceForNormalLanding = 2.0f;
 
     // Sticky Ball runtime state
     bool stickyPinned;
@@ -161,40 +133,33 @@ public class RunScoring2D : MonoBehaviour
     RigidbodyConstraints2D stickyPrevConstraints;
     RigidbodyInterpolation2D stickyPrevInterpolation;
 
-    bool stickyThrowActive;
     float stickyThrowDistance;
     Vector2 stickyThrowLastPos;
 
-    [Header("Hot Spot (v1)")]
-    [SerializeField] string hotSpotId = "hot_spot";
-
+    [Header("Hot Spot Visuals")]
     // Visuals (world objects)
     [SerializeField] Transform hotSpotMarker;   // circle sprite object
     [SerializeField] TextMeshPro hotSpotText;   // text centered in circle
-    [SerializeField] Color hotSpotColor = new Color(1f, 0.75f, 0.75f, 1f);
 
     // Gameplay tuning
     [SerializeField, Min(0.05f)] float hotSpotRadiusStart = 0.9f;
-    [SerializeField, Range(0.5f, 0.99f)] float hotSpotShrinkFactorPerHit = 0.94f;
-    [SerializeField, Min(0.05f)] float hotSpotMinRadius = 0.25f;
 
     [SerializeField, Min(0f)] float hotSpotMinHitSpeed = 0.75f;
-    [SerializeField, Min(0)] int hotSpotDistancePerHit = 50;
-
+    [SerializeField, Min(0f)] float hotSpotHitCooldown = 0.05f;
 
     // Runtime state
-    bool hotSpotUsedThisRun;
-    bool hotSpotSpawnedThisRun;
     bool hotSpotInside;
     Vector2 hotSpotCenter;
     float hotSpotRadius;
     int hotSpotBonusDistanceThisRun;
+    int hotSpotTotalPointsThisRun;
+    float hotSpotLastHitTime;  // Prevent rapid multi-hits with cooldown
 
     [Header("Run Cancel")]
     [SerializeField] KeyCode cancelRunKey = KeyCode.X;
     [SerializeField] int cancelRunFingerCount = 5;
 
-    [SerializeField] ActionManager actions;
+    [SerializeField] ActionDetector actions;
 
     bool cancelGestureArmed = true;
 
@@ -303,7 +268,7 @@ public class RunScoring2D : MonoBehaviour
         if (!inventory) inventory = FindFirstObjectByType<PlayerInventory>(FindObjectsInactive.Include);
         if (!xp) xp = FindFirstObjectByType<XpManager>(FindObjectsInactive.Include);
         if (!powerups) powerups = FindFirstObjectByType<PowerupManager>(FindObjectsInactive.Include);
-        if (!actions) actions = FindFirstObjectByType<ActionManager>(FindObjectsInactive.Include);
+        if (!actions) actions = FindFirstObjectByType<ActionDetector>(FindObjectsInactive.Include);
         if (!popups) popups = FindFirstObjectByType<FloatingPopupSystem>(FindObjectsInactive.Include);
 
         totalDistance = PlayerPrefs.GetFloat(totalDistanceKey, 0f);
@@ -387,147 +352,60 @@ public class RunScoring2D : MonoBehaviour
 
         if (throwEvent)
         {
-            // Encore triggers on throw release.
-            // If run ended but is still adjustable, it revives the same run and grants +1 max throw.
-            // If run is active, it grants +1 max throw once per run.
-            // Otherwise it disarms without consuming.
-            landingAmpActiveThisThrow = false;
-            insuranceActiveThisThrow = false;
-
-            if (powerups && powerups.HasArmed)
+            // Let PowerupManager handle all throw-release powerup logic
+            if (powerups && ballRb)
             {
+                // Check for Encore revive
+                bool isEncoreRevive = !streakActive && pendingRunAdjustActive && !powerups.EncoreAnyUsedThisRun;
+                powerups.OnThrowReleased((Vector2)ballRb.position, isEncoreRevive);
+
+                // Handle Encore side effects (bonus throws, etc)
                 var def = powerups.GetArmedDef();
-                if (def && def.trigger == PowerupTrigger.NextThrowRelease)
+                if (def && def.id == "encore")
                 {
-                    // Landing Amplifier: consumed immediately on release, applies to THIS throw only.
-                    if (def.id == landingAmplifierId)
+                    if (isEncoreRevive && powerups.EncoreAnyUsedThisRun)
                     {
-                        if (powerups.TryTrigger_NextThrowRelease())
-                        {
-                            landingAmpActiveThisThrow = true;
-
-                            if (popups && ballRb)
-                            {
-                                Vector2 p = ballRb.position;
-                                popups.PopAtWorldWithExtraOffset(p, "Landing Amp!", landingAmpPopupColor, new Vector2(0f, 0f));
-                            }
-                        }
-                        else
-                        {
-                            powerups.Disarm_NoConsume();
-                        }
+                        streakActive = true;
+                        resultLatched = false;
+                        bonusThrowsThisRun += 1;
+                        throwsExhausted = false;
+                        UpdateThrowsUi();
+                        stopTimer = 0f;
                     }
-                    // Insurance: consumed on release, applies to THIS throw only.
-                    // While active, any landing multiplier below 1x is forced up to 1x (live preview + final).
-                    else if (def.id == insuranceId)
+                    else if (streakActive && powerups.EncoreAnyUsedThisRun && !powerups.HasArmed)
                     {
-                        if (powerups.TryTrigger_NextThrowRelease())
-                        {
-                            insuranceActiveThisThrow = true;
-
-                            if (popups)
-                            {
-                                Vector2 p = ballRb ? (Vector2)ballRb.position : Vector2.zero;
-                                popups.PopAtWorldWithExtraOffset(p, "Insurance!", new Color(0.85f, 1f, 0.85f, 1f), new Vector2(0f, 0f));
-                                popups.PopAtWorldWithExtraOffset(p, "0x Blocked", new Color(0.85f, 1f, 0.85f, 1f), new Vector2(0f, -60f));
-                            }
-                        }
-                        else
-                        {
-                            powerups.Disarm_NoConsume();
-                        }
+                        bonusThrowsThisRun += 1;
+                        UpdateThrowsUi();
                     }
-                    else if (def.id == hotSpotId)
+                }
+
+                // Handle Hot Spot initialization (only on first throw when spawned)
+                if (powerups.HotSpotJustSpawnedThisThrow && ballRb)
+                {
+                    hotSpotCenter = ballRb.position;
+                    hotSpotRadius = hotSpotRadiusStart;
+                    hotSpotInside = false;
+                    hotSpotBonusDistanceThisRun = 0;
+                    hotSpotTotalPointsThisRun = 0;  // Reset points for this hot spot instance
+                    HotSpot_SetVisualsActive(true);
+                    HotSpot_UpdateVisuals();
+                    hotSpotInside = IsBallOverlappingHotSpot(ballRb.position);
+
+                    // Popup positioned outside hot spot, toward screen center
+                    if (popups)
                     {
-                        // Only once per run. If already used, just disarm.
-                        if (hotSpotUsedThisRun)
-                        {
-                            powerups.Disarm_NoConsume();
-                        }
-                        else
-                        {
-                            if (powerups.TryTrigger_NextThrowRelease())
-                            {
-                                hotSpotUsedThisRun = true;
-                                hotSpotSpawnedThisRun = true;
-
-                                hotSpotCenter = ballRb ? ballRb.position : hotSpotCenter;
-                                hotSpotRadius = hotSpotRadiusStart;
-                                hotSpotInside = false;
-                                hotSpotBonusDistanceThisRun = 0;
-
-                                HotSpot_SetVisualsActive(true);
-                                HotSpot_UpdateVisuals();
-
-                                // Prevent instant hit if ball starts inside
-                                hotSpotInside = ballRb ? IsBallOverlappingHotSpot(ballRb.position) : false;
-
-                                if (popups && ballRb)
-                                {
-                                    Vector2 p = ballRb.position;
-                                    popups.PopAtWorldWithExtraOffset(p, "Hot Spot!", hotSpotColor, new Vector2(0f, 0f));
-                                    popups.PopAtWorldWithExtraOffset(p, $"+{hotSpotDistancePerHit}d per hit", hotSpotColor, new Vector2(0f, -60f));
-                                }
-                            }
-                            else
-                            {
-                                powerups.Disarm_NoConsume();
-                            }
-                        }
+                        WorldBounds b = ComputeBounds();
+                        Vector2 screenCenter = new Vector2(b.centerX, b.centerY);
+                        Vector2 dirToCenter = (screenCenter - hotSpotCenter).normalized;
+                        Vector2 popupOffset = dirToCenter * (hotSpotRadius + 0.5f);
+                        popups.PopAtWorldWithExtraOffset(hotSpotCenter, "Hot Spot!", new Color(1f, 0.75f, 0.75f, 1f), popupOffset);
                     }
-                    // Encore (existing behavior)
-                    else if (def.id == "encore")
-                    {
-                        // Revive last run (post-end window)
-                        if (!streakActive && pendingRunAdjustActive && !EncoreAnyUsedThisRun)
-                        {
-                            if (powerups.TryTrigger_NextThrowRelease())
-                            {
-                                if (popups && ballRb)
-                                {
-                                    Vector2 p = ballRb.position;
-                                    popups.PopAtWorldWithExtraOffset(p, "Encore!", encorePopupColor, new Vector2(0f, 0f));
-                                    popups.PopAtWorldWithExtraOffset(p, "Run Saved", encorePopupColor, new Vector2(0f, -60f));
-                                }
-
-                                streakActive = true;        // prevents StartStreak inside OnThrown()
-                                resultLatched = false;
-                                encoreReviveUsedThisRun = true;
-
-                                bonusThrowsThisRun += 1;
-                                throwsExhausted = false;
-                                UpdateThrowsUi();
-
-                                stopTimer = 0f;
-                            }
-                        }
-                        // Mid-run boost (once per run)
-                        else if (streakActive && !EncoreAnyUsedThisRun)
-                        {
-                            if (powerups.TryTrigger_NextThrowRelease())
-                            {
-                                if (popups && ballRb)
-                                {
-                                    Vector2 p = ballRb.position;
-                                    popups.PopAtWorldWithExtraOffset(p, "Encore!", encorePopupColor, new Vector2(0f, 0f));
-                                    popups.PopAtWorldWithExtraOffset(p, "+1 Throw", encorePopupColor, new Vector2(0f, -60f));
-                                }
-
-                                encoreUsedThisRun = true;
-                                bonusThrowsThisRun += 1;
-                                UpdateThrowsUi();
-                            }
-                        }
-                        else
-                        {
-                            powerups.Disarm_NoConsume();
-                        }
-                    }
-                    else
-                    {
-                        // Some other NextThrowRelease powerup (not supported yet)
-                        powerups.Disarm_NoConsume();
-                    }
+                }
+                else if (powerups.HotSpotSpawnedThisRun && ballRb)
+                {
+                    // Keep visual active but don't reposition - it stays where it spawned
+                    HotSpot_SetVisualsActive(true);
+                    hotSpotInside = IsBallOverlappingHotSpot(ballRb.position);
                 }
             }
 
@@ -753,11 +631,11 @@ public class RunScoring2D : MonoBehaviour
         if (!def) return;
 
         // Only Sticky Ball cares about wall contact right now.
-        if (def.id != stickyBallId) return;
+        if (def.id != powerups.GetStickyBallId()) return;
         if (def.trigger != PowerupTrigger.NextWallContact) return;
 
         // Consume ONLY when it actually triggers.
-        if (!powerups.TryTrigger_NextWallContact()) return;
+        if (!powerups.TrySpend(def.id, 1)) return;
 
         ApplyStickyBall(wallId, contactWorld);
     }
@@ -816,13 +694,12 @@ public class RunScoring2D : MonoBehaviour
         suppressResultVisualsUntilThrow = false;
 
         // Make the run end almost instantly (still goes through the normal stop end path).
-        if (stickyEndsRunFast)
-            stopTimer = Mathf.Max(stopTimer, stopHoldTime * 0.98f);
+        stopTimer = Mathf.Max(stopTimer, stopHoldTime * 0.98f);
 
         if (popups)
         {
             // Popups at pinned position feels better than contact point.
-            popups.PopAtWorldWithExtraOffset(p, "Sticky Ball!", stickyPopupColor, new Vector2(0f, 0f));
+            popups.PopAtWorldWithExtraOffset(p, "Sticky Ball!", new Color(0.75f, 0.9f, 1f, 1f), new Vector2(0f, 0f));
         }
     }
 
@@ -843,7 +720,7 @@ public class RunScoring2D : MonoBehaviour
         }
 
         // Reset sticky-throw tracking so the next throw behaves normally
-        stickyThrowActive = false;
+        if (powerups) powerups.SetStickyThrowActive(false);
         stickyThrowDistance = 0f;
     }
 
@@ -865,7 +742,7 @@ public class RunScoring2D : MonoBehaviour
             hotSpotMarker.localScale = new Vector3(d, d, 1f);
 
             var sr = hotSpotMarker.GetComponent<SpriteRenderer>();
-            if (sr) sr.color = hotSpotColor;
+            if (sr) sr.color = new Color(1f, 0.75f, 0.75f, 1f);
         }
 
         if (hotSpotText)
@@ -874,13 +751,14 @@ public class RunScoring2D : MonoBehaviour
 
     void ClearHotSpotAll()
     {
-        hotSpotUsedThisRun = false;
-        hotSpotSpawnedThisRun = false;
+        // hotSpot state flags are now managed by PowerupManager
 
         hotSpotInside = false;
         hotSpotCenter = Vector2.zero;
         hotSpotRadius = 0f;
         hotSpotBonusDistanceThisRun = 0;
+        hotSpotTotalPointsThisRun = 0;
+        hotSpotLastHitTime = -9999f;
 
         HotSpot_SetVisualsActive(false);
     }
@@ -888,7 +766,7 @@ public class RunScoring2D : MonoBehaviour
     // Overlap test: ball circle vs hot spot circle
     bool IsBallOverlappingHotSpot(Vector2 ballCenter)
     {
-        if (!hotSpotSpawnedThisRun) return false;
+        if (!powerups || !powerups.HotSpotSpawnedThisRun) return false;
 
         WorldBounds b = ComputeBounds();
         float ballR = b.r;
@@ -901,7 +779,7 @@ public class RunScoring2D : MonoBehaviour
     void UpdateHotSpotHitState(bool isHeld)
     {
         if (!streakActive) return;
-        if (!hotSpotSpawnedThisRun) return;
+        if (!powerups || !powerups.HotSpotSpawnedThisRun) return;
         if (!ballRb) return;
 
         // Don’t count while held, but keep state synced
@@ -913,22 +791,52 @@ public class RunScoring2D : MonoBehaviour
 
         bool insideNow = IsBallOverlappingHotSpot(ballRb.position);
 
-        // Count a hit only on outside->inside transition
+        // Count a hit only on outside->inside transition (and not too soon after last hit)
         if (insideNow && !hotSpotInside)
         {
+            float timeSinceLastHit = Time.time - hotSpotLastHitTime;
+            if (timeSinceLastHit < hotSpotHitCooldown)
+            {
+                hotSpotInside = insideNow;
+                return;  // Cooldown active, ignore this hit
+            }
+
             float speed = ballRb.linearVelocity.magnitude;
             if (speed >= hotSpotMinHitSpeed)
             {
-                travelDistance += hotSpotDistancePerHit;
-                hotSpotBonusDistanceThisRun += hotSpotDistancePerHit;
+                hotSpotLastHitTime = Time.time;  // Record hit time
+                int bonus = powerups ? powerups.GetHotSpotDistancePerHit() : 50;
 
-                // Shrink each hit
-                hotSpotRadius = Mathf.Max(hotSpotMinRadius, hotSpotRadius * hotSpotShrinkFactorPerHit);
+                // Cap at 1000 total points
+                int remainingCapacity = 1000 - hotSpotTotalPointsThisRun;
+                if (remainingCapacity <= 0)
+                {
+                    // Hot spot is exhausted, disable it
+                    if (powerups) powerups.DisableHotSpot();
+                    HotSpot_SetVisualsActive(false);
+                    hotSpotInside = insideNow;
+                    return;
+                }
 
-                HotSpot_UpdateVisuals();
+                // Award only up to the cap
+                bonus = Mathf.Min(bonus, remainingCapacity);
+                travelDistance += bonus;
+                hotSpotBonusDistanceThisRun += bonus;
+                hotSpotTotalPointsThisRun += bonus;
 
-                if (popups)
-                    popups.PopAtWorldWithExtraOffset(hotSpotCenter, $"+{hotSpotDistancePerHit}d", hotSpotColor, new Vector2(0f, 0f));
+                // Linear shrink: 20 increments from start size to 0
+                hotSpotRadius = Mathf.Max(0f, hotSpotRadius - (hotSpotRadiusStart / 20f));
+
+                // Disappear when radius is gone
+                if (hotSpotRadius <= 0f)
+                {
+                    HotSpot_SetVisualsActive(false);
+                    if (powerups) powerups.DisableHotSpot();
+                }
+                else
+                {
+                    HotSpot_UpdateVisuals();
+                }
             }
         }
 
@@ -944,7 +852,7 @@ public class RunScoring2D : MonoBehaviour
         PauseLandingVfxIfAny();
         ClearStickyIfAny();
         disableLaneCapThisSegment = false;
-        stickyThrowActive = false;
+        if (powerups) powerups.SetStickyThrowActive(false);
 
         if (!streakActive && resultLatched && !lastRunNoLanding)
             suppressResultVisualsUntilThrow = true;
@@ -974,12 +882,12 @@ public class RunScoring2D : MonoBehaviour
 
         // If Sticky Ball is armed when the throw starts, do NOT apply lane cap for this whole flight.
         // This resets on the next pickup.
-        disableLaneCapThisSegment =
-            powerups && powerups.HasArmed &&
-            powerups.ArmedId == stickyBallId;
+        bool isStickBallArmed = powerups && powerups.HasArmed &&
+            powerups.ArmedId == powerups.GetStickyBallId();
+        disableLaneCapThisSegment = isStickBallArmed;
 
         // Sticky anti-exploit: track how far the ball travels on a Sticky-armed throw.
-        stickyThrowActive = (powerups && powerups.HasArmed && powerups.ArmedId == stickyBallId);
+        if (powerups) powerups.SetStickyThrowActive(isStickBallArmed);
         stickyThrowDistance = 0f;
         stickyThrowLastPos = ballRb.position;
 
@@ -988,8 +896,13 @@ public class RunScoring2D : MonoBehaviour
 
         landingAllowedThisSegment = true;
 
-        if (hotSpotSpawnedThisRun && ballRb)
+        if (powerups && powerups.HotSpotSpawnedThisRun && ballRb)
             hotSpotInside = IsBallOverlappingHotSpot(ballRb.position);
+    }
+
+    void UpdateHotSpotHitState()
+    {
+        // This method exists if there were hit state tracking calls
     }
 
     void StartStreak()
@@ -1043,8 +956,7 @@ public class RunScoring2D : MonoBehaviour
     {
         bool wasCatch = grab && grab.LastPickupWasCatch;
         if (actions) actions.OnPickup(wasCatch);
-        landingAmpActiveThisThrow = false;
-        insuranceActiveThisThrow = false;
+        if (powerups) powerups.OnPickupHappened();
 
         if (wasCatch)
         {
@@ -1135,10 +1047,17 @@ public class RunScoring2D : MonoBehaviour
         Vector2 delta = p - lastRunPos;
 
         float step = delta.magnitude * Mathf.Max(0.0001f, distanceUnitScale);
+
+        // Apply Overtime multiplier if active
+        if (powerups && powerups.OvertimeActiveThisThrow)
+        {
+            step *= powerups.GetOvertimeMultiplier();
+        }
+
         travelDistance += step;
         lastRunPos = p;
 
-        if (stickyThrowActive)
+        if (powerups && powerups.StickyThrowActive)
         {
             stickyThrowDistance += delta.magnitude;
             stickyThrowLastPos = p;
@@ -1349,13 +1268,13 @@ public class RunScoring2D : MonoBehaviour
         float e = Mathf.Max(0.0001f, closenessExponent);
         float maxM = maxMultiplier;
 
-        if (landingAmpActiveThisThrow)
+        if (powerups && powerups.LandingAmpActiveThisThrow)
         {
-            edgeValue *= landingAmpEdgeMult;
-            cornerTotal *= landingAmpCornerMult;
+            edgeValue *= powerups.GetLandingAmpEdgeMult();
+            cornerTotal *= powerups.GetLandingAmpCornerMult();
 
-            e = Mathf.Max(0.0001f, landingAmpExponent);
-            maxM = Mathf.Max(maxM, landingAmpMaxMultiplier);
+            e = Mathf.Max(0.0001f, powerups.GetLandingAmpExponent());
+            maxM = Mathf.Max(maxM, powerups.GetLandingAmpMaxMultiplier());
         }
 
         float cornerBoost = cornerTotal - edgeValue;
@@ -1371,15 +1290,14 @@ public class RunScoring2D : MonoBehaviour
 
         m = Mathf.Clamp(m, 0f, maxM);
 
-        // Insurance: never allow a sub-1x landing multiplier on this throw.
-        // This affects live ball label updates while moving AND the final displayed landing mult.
-        // Does not boost anything above 1x.
-        if (insuranceActiveThisThrow && m < 1f)
-            m = 1f;
+        // Insurance: clamp anything under 2x up to 2x. Anything 2x or higher stays normal.
+        // E.g. 1.9x → 2.0x, 2.1x → 2.1x
+        if (powerups && powerups.InsuranceActiveThisThrow && m < 2f)
+            m = 2f;
 
         // Sticky anti-exploit: if this throw was Sticky-armed, scale DOWN the bonus
         // based on how far the ball actually traveled this throw.
-        if (stickyThrowActive && stickyFullDistanceForNormalLanding > 0.0001f && m > 1f)
+        if (powerups && powerups.StickyThrowActive && stickyFullDistanceForNormalLanding > 0.0001f && m > 1f)
         {
             float factor = Mathf.Clamp01(stickyThrowDistance / stickyFullDistanceForNormalLanding);
             m = 1f + (m - 1f) * factor;
@@ -1475,22 +1393,14 @@ public class RunScoring2D : MonoBehaviour
         Vector2 dir = velNow / v0;
         Vector2 unfoldedEnd = posNow + dir * s;
 
-        // Use the same world bounds as your ball uses (camera bounds minus radius/inset).
-        // If you already have a method/values for these bounds, use those.
-        // Here we derive them from camera like your other code does.
-        Camera cam = Camera.main;
-        if (!cam || !ballRb) return posNow;
+        // Use GameViewport for consistent bounds calculation
+        GameViewport.GetWorldBounds(out var min, out var max);
 
-        float z = cam.WorldToScreenPoint(ballRb.position).z;
-        Vector2 bl = cam.ViewportToWorldPoint(new Vector3(0f, 0f, z));
-        Vector2 tr = cam.ViewportToWorldPoint(new Vector3(1f, 1f, z));
-
-        // Apply same inset & radius logic you use elsewhere
         float r = ballCollider ? (ballCollider.radius * Mathf.Max(ballRb.transform.lossyScale.x, ballRb.transform.lossyScale.y)) : 0f;
-        float minX = bl.x + boundsInset + r;
-        float maxX = tr.x - boundsInset - r;
-        float minY = bl.y + boundsInset + r;
-        float maxY = tr.y - boundsInset - r;
+        float minX = min.x + boundsInset + r;
+        float maxX = max.x - boundsInset - r;
+        float minY = min.y + boundsInset + r;
+        float maxY = max.y - boundsInset - r;
 
         return new Vector2(
             FoldMirrored(unfoldedEnd.x, minX, maxX),
@@ -1512,7 +1422,8 @@ public class RunScoring2D : MonoBehaviour
     public float GetLandingMultiplierAt(Vector2 worldPos)
     {
         // Default behavior (gameplay): landing amp only if it was actually triggered this throw.
-        return GetLandingMultiplierAt(worldPos, landingAmpActiveThisThrow);
+        bool applyAmp = powerups && powerups.LandingAmpActiveThisThrow;
+        return GetLandingMultiplierAt(worldPos, applyAmp);
     }
 
     // Heatmap / preview overload: lets UI request landing-amp curve without changing gameplay state.
@@ -1530,13 +1441,13 @@ public class RunScoring2D : MonoBehaviour
         float e = Mathf.Max(0.0001f, closenessExponent);
         float maxM = maxMultiplier;
 
-        if (applyLandingAmp)
+        if (applyLandingAmp && powerups)
         {
-            edgeValue *= landingAmpEdgeMult;
-            cornerTotal *= landingAmpCornerMult;
+            edgeValue *= powerups.GetLandingAmpEdgeMult();
+            cornerTotal *= powerups.GetLandingAmpCornerMult();
 
-            e = Mathf.Max(0.0001f, landingAmpExponent);
-            maxM = Mathf.Max(maxM, landingAmpMaxMultiplier);
+            e = Mathf.Max(0.0001f, powerups.GetLandingAmpExponent());
+            maxM = Mathf.Max(maxM, powerups.GetLandingAmpMaxMultiplier());
         }
 
         float cornerBoost = cornerTotal - edgeValue;
@@ -1924,17 +1835,16 @@ public class RunScoring2D : MonoBehaviour
 
     WorldBounds ComputeBounds()
     {
-        Vector2 bl = cam.ViewportToWorldPoint(new Vector3(0f, 0f, 0f));
-        Vector2 tr = cam.ViewportToWorldPoint(new Vector3(1f, 1f, 0f));
+        GameViewport.GetWorldBounds(out var min, out var max);
 
         float scale = Mathf.Max(ballRb.transform.lossyScale.x, ballRb.transform.lossyScale.y);
         float r = ballCollider.radius * scale;
 
         WorldBounds b;
-        b.left = bl.x + boundsInset;
-        b.right = tr.x - boundsInset;
-        b.bottom = bl.y + boundsInset;
-        b.top = tr.y - boundsInset;
+        b.left = min.x + boundsInset;
+        b.right = max.x - boundsInset;
+        b.bottom = min.y + boundsInset;
+        b.top = max.y - boundsInset;
         b.r = r;
 
         b.centerX = (b.left + b.right) * 0.5f;
@@ -1970,7 +1880,7 @@ public class RunScoring2D : MonoBehaviour
         // These thresholds match what you described:
         // normal: green starts at 2, max at 4
         // landing amp: green starts at 4, max at 6
-        if (landingAmpActiveThisThrow)
+        if (powerups && powerups.LandingAmpActiveThisThrow)
         {
             tGood = 4f;
             tMax = 6f;
@@ -1994,13 +1904,13 @@ public class RunScoring2D : MonoBehaviour
         maxMul = maxMultiplier;
 
         // Landing Amplifier overrides (if active this throw)
-        if (landingAmpActiveThisThrow)
+        if (powerups && powerups.LandingAmpActiveThisThrow)
         {
             // This must match your Landing Amplifier logic used in multiplier calc
-            edgeValue *= landingAmpEdgeMult;          // e.g. 2x edges (2->4)
-            cornerTotal *= landingAmpCornerMult;      // e.g. 1.5x corners (4->6)
-            exponent = landingAmpExponent;            // harder curve
-            maxMul = landingAmpMaxMultiplier;         // e.g. 6
+            edgeValue *= powerups.GetLandingAmpEdgeMult();
+            cornerTotal *= powerups.GetLandingAmpCornerMult();
+            exponent = powerups.GetLandingAmpExponent();
+            maxMul = powerups.GetLandingAmpMaxMultiplier();
         }
     }
 
@@ -2019,10 +1929,8 @@ public class RunScoring2D : MonoBehaviour
 
     public float GetFieldScaleForNormalization()
     {
-        WorldBounds b = ComputeBounds();
-        float w = Mathf.Max(0.0001f, b.right - b.left);
-        float h = Mathf.Max(0.0001f, b.top - b.bottom);
-        return w + h;
+        Vector2 dims = GameViewport.GetWorldDimensions();
+        return dims.magnitude;
     }
 
 #if UNITY_EDITOR

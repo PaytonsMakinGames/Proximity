@@ -18,7 +18,7 @@ public class PowerupInventory : MonoBehaviour
     [SerializeField] string saveKey = "PowerupInventory_v1";
 
     [Header("DEV seed (testing only)")]
-    [SerializeField] bool devSeedOnFirstInstall = true;
+    [SerializeField] bool devSeedOnFirstInstall = false;
     [SerializeField] int devSeedEach = 99;
 
     public event Action OnChanged;

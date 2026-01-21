@@ -6,14 +6,66 @@ public class PowerupManager : MonoBehaviour
     [Header("Refs")]
     [SerializeField] PowerupDatabase db;
     [SerializeField] PowerupInventory inventory;
+    [SerializeField] FloatingPopupSystem popups;
 
-    public event Action OnArmedChanged; // for UI later
+    [Header("Landing Amplifier (v1)")]
+    [SerializeField] string landingAmplifierId = "landing_amplifier";
+    [SerializeField] float landingAmpExponent = 5.5f;
+    [SerializeField] float landingAmpEdgeMult = 2.0f;
+    [SerializeField] float landingAmpCornerMult = 1.5f;
+    [SerializeField] float landingAmpMaxMultiplier = 6.0f;
+    [SerializeField] Color landingAmpPopupColor = new Color(0.85f, 0.9f, 1f, 1f);
+
+    [Header("Insurance (v1)")]
+    [SerializeField] string insuranceId = "insurance";
+    [SerializeField] Color insurancePopupColor = new Color(0.85f, 1f, 0.85f, 1f);
+
+    [Header("Sticky Ball (v1)")]
+    [SerializeField] string stickyBallId = "sticky_ball";
+
+    [Header("Hot Spot (v1)")]
+    [SerializeField] string hotSpotId = "hot_spot";
+    [SerializeField] int hotSpotDistancePerHit = 50;
+    [SerializeField] Color hotSpotColor = new Color(1f, 0.75f, 0.75f, 1f);
+
+    [Header("Overtime (v1)")]
+    [SerializeField] string overtimeId = "overtime";
+    [SerializeField] float overtimeRampMidTime = 4f;       // At 4s: +25%
+    [SerializeField] float overtimeMaxMultiplier = 0.5f;   // Caps at +50%
+    [SerializeField] Color overtimePopupColor = new Color(1f, 0.85f, 0.5f, 1f);
+
+    [Header("Encore")]
+    [SerializeField] Color encorePopupColor = new Color(1f, 0.9f, 0.75f, 1f);
+
+    // Runtime state: which powerups are "active this throw"
+    bool landingAmpActiveThisThrow;
+    bool insuranceActiveThisThrow;
+    bool stickyThrowActive;
+    bool hotSpotUsedThisRun;
+    bool hotSpotSpawnedThisRun;
+    bool hotSpotJustSpawnedThisThrow;  // True only the throw Hot Spot is first triggered
+    bool overtimeActiveThisThrow;
+    float overtimeStartTime;  // When this throw started
+    bool encoreUsedThisRun;
+    bool encoreReviveUsedThisRun;
+
+    public bool LandingAmpActiveThisThrow => landingAmpActiveThisThrow;
+    public bool InsuranceActiveThisThrow => insuranceActiveThisThrow;
+    public bool StickyThrowActive => stickyThrowActive;
+    public bool HotSpotUsedThisRun => hotSpotUsedThisRun;
+    public bool HotSpotSpawnedThisRun => hotSpotSpawnedThisRun;
+    public bool HotSpotJustSpawnedThisThrow => hotSpotJustSpawnedThisThrow;
+    public bool OvertimeActiveThisThrow => overtimeActiveThisThrow;
+    public bool EncoreAnyUsedThisRun => encoreUsedThisRun || encoreReviveUsedThisRun;
+
+    public event Action OnArmedChanged;
 
     public string ArmedId { get; private set; } = null;
 
     void Awake()
     {
         if (!inventory) inventory = FindFirstObjectByType<PowerupInventory>(FindObjectsInactive.Include);
+        if (!popups) popups = FindFirstObjectByType<FloatingPopupSystem>(FindObjectsInactive.Include);
     }
 
     public bool HasArmed => !string.IsNullOrEmpty(ArmedId);
@@ -33,7 +85,6 @@ public class PowerupManager : MonoBehaviour
         if (inventory.GetCount(powerupId) <= 0)
             return false;
 
-        // Swap: old one simply becomes un-armed (no consumption).
         ArmedId = powerupId;
         OnArmedChanged?.Invoke();
         return true;
@@ -49,37 +100,156 @@ public class PowerupManager : MonoBehaviour
     // Called by RunScoring2D when a run ends for any reason.
     public void OnRunEnded()
     {
-        // Rule: armed but unused returns to inventory (meaning: do nothing except unarm).
         Disarm_NoConsume();
+
+        // Reset all "active this throw" flags for next run
+        landingAmpActiveThisThrow = false;
+        insuranceActiveThisThrow = false;
+        stickyThrowActive = false;
+        hotSpotUsedThisRun = false;
+        hotSpotSpawnedThisRun = false;
+        hotSpotJustSpawnedThisThrow = false;
+        overtimeActiveThisThrow = false;
+        overtimeStartTime = 0f;
+        encoreUsedThisRun = false;
+        encoreReviveUsedThisRun = false;
     }
 
-    // ---------------- Trigger entry points (we’ll wire these in later) ----------------
-    // These are intentionally "skeleton" methods: they only enforce consumption rules and clear armed state.
-    // Actual gameplay effects get implemented in later steps.
-
-    public bool TryTrigger_NextWallContact()
+    // Called by RunScoring2D when a new throw is released.
+    public void OnThrowReleased(Vector2 ballWorldPos, bool isEncoreRevive = false)
     {
-        return TryConsumeIfArmedMatches(PowerupTrigger.NextWallContact);
+        if (!HasArmed) return;
+        if (!db || !inventory) return;
+
+        var def = db.Get(ArmedId);
+        if (!def || def.trigger != PowerupTrigger.NextThrowRelease) return;
+
+        // Landing Amplifier
+        if (def.id == landingAmplifierId)
+        {
+            if (TryConsumeIfArmedMatches(PowerupTrigger.NextThrowRelease))
+            {
+                landingAmpActiveThisThrow = true;
+                if (popups)
+                    popups.PopAtWorldWithExtraOffset(ballWorldPos, "Landing Amp!", landingAmpPopupColor, new Vector2(0f, 0f));
+            }
+        }
+        // Insurance
+        else if (def.id == insuranceId)
+        {
+            if (TryConsumeIfArmedMatches(PowerupTrigger.NextThrowRelease))
+            {
+                insuranceActiveThisThrow = true;
+                if (popups)
+                {
+                    popups.PopAtWorldWithExtraOffset(ballWorldPos, "Insurance!", insurancePopupColor, new Vector2(0f, 0f));
+                    popups.PopAtWorldWithExtraOffset(ballWorldPos, "0x Blocked", insurancePopupColor, new Vector2(0f, -60f));
+                }
+            }
+        }
+        // Hot Spot
+        else if (def.id == hotSpotId)
+        {
+            // Allow spawning if not currently active (even if one was used earlier this run)
+            if (!hotSpotSpawnedThisRun)
+            {
+                if (TryConsumeIfArmedMatches(PowerupTrigger.NextThrowRelease))
+                {
+                    hotSpotSpawnedThisRun = true;
+                    hotSpotJustSpawnedThisThrow = true;
+                    // Popup will be handled by RunScoring2D with proper positioning
+                }
+            }
+            else
+            {
+                Disarm_NoConsume();
+            }
+        }
+        // Encore
+        else if (def.id == "encore")
+        {
+            if (TryConsumeIfArmedMatches(PowerupTrigger.NextThrowRelease))
+            {
+                if (isEncoreRevive)
+                    encoreReviveUsedThisRun = true;
+                else
+                    encoreUsedThisRun = true;
+
+                if (popups)
+                {
+                    popups.PopAtWorldWithExtraOffset(ballWorldPos, "Encore!", encorePopupColor, new Vector2(0f, 0f));
+                    popups.PopAtWorldWithExtraOffset(ballWorldPos, isEncoreRevive ? "Run Saved" : "+1 Throw", encorePopupColor, new Vector2(0f, -60f));
+                }
+            }
+        }
+        // Overtime
+        else if (def.id == overtimeId)
+        {
+            if (TryConsumeIfArmedMatches(PowerupTrigger.NextThrowRelease))
+            {
+                overtimeActiveThisThrow = true;
+                overtimeStartTime = Time.time;
+                if (popups)
+                    popups.PopAtWorldWithExtraOffset(ballWorldPos, "Overtime!", overtimePopupColor, new Vector2(0f, 0f));
+            }
+        }
     }
 
-    public bool TryTrigger_NextLandingEval()
+    // Called by RunScoring2D when a pickup happens.
+    public void OnPickupHappened()
     {
-        return TryConsumeIfArmedMatches(PowerupTrigger.NextLandingEval);
+        landingAmpActiveThisThrow = false;
+        insuranceActiveThisThrow = false;
+        hotSpotJustSpawnedThisThrow = false;
     }
 
-    public bool TryTrigger_MissedCatchRetro()
+    // Called by RunScoring2D after a landing multiplier is evaluated.
+    public void OnLandingEvaluated()
     {
-        return TryConsumeIfArmedMatches(PowerupTrigger.MissedCatchRetro);
+        insuranceActiveThisThrow = false;
     }
 
-    public bool TryTrigger_EndOfRunOffer()
+    // Called by RunScoring2D when hot spot is exhausted or disappears
+    public void DisableHotSpot()
     {
-        return TryConsumeIfArmedMatches(PowerupTrigger.EndOfRunOffer);
+        hotSpotSpawnedThisRun = false;
     }
 
-    public bool TryTrigger_NextThrowRelease()
+    // Called by RunScoring2D to track sticky throw state (for anti-exploit logic).
+    public void SetStickyThrowActive(bool active)
     {
-        return TryConsumeIfArmedMatches(PowerupTrigger.NextThrowRelease);
+        stickyThrowActive = active;
+    }
+
+    // Query methods for scoring logic
+    public float GetLandingAmpExponent() => landingAmpExponent;
+    public float GetLandingAmpEdgeMult() => landingAmpEdgeMult;
+    public float GetLandingAmpCornerMult() => landingAmpCornerMult;
+    public float GetLandingAmpMaxMultiplier() => landingAmpMaxMultiplier;
+    public int GetHotSpotDistancePerHit() => hotSpotDistancePerHit;
+    public string GetStickyBallId() => stickyBallId;
+    public string GetHotSpotId() => hotSpotId;
+
+    // Calculate Overtime multiplier based on flight time
+    public float GetOvertimeMultiplier()
+    {
+        if (!overtimeActiveThisThrow) return 1f;
+
+        float elapsed = Time.time - overtimeStartTime;
+
+        // Ramp curve: at 2s = 0.1, at 4s = 0.25, caps at 0.5
+        // Using smooth acceleration: (t / 4)^1.5 * 0.5, clamped
+        float t = Mathf.Clamp01(elapsed / overtimeRampMidTime);
+        float mult = Mathf.Pow(t, 1.5f) * overtimeMaxMultiplier;
+
+        return 1f + mult;
+    }
+
+    // Public method for spending a powerup (used by RunScoring2D for Sticky Ball)
+    public bool TrySpend(string powerupId, int count)
+    {
+        if (!inventory) return false;
+        return inventory.TrySpend(powerupId, count);
     }
 
     bool TryConsumeIfArmedMatches(PowerupTrigger trigger)
@@ -93,7 +263,6 @@ public class PowerupManager : MonoBehaviour
         if (def.trigger != trigger)
             return false;
 
-        // Consume ONLY when it actually triggers.
         bool spent = inventory.TrySpend(def.id, 1);
         if (!spent) return false;
 

@@ -12,8 +12,8 @@ public class FingerGrabInertia2D : MonoBehaviour
     [SerializeField] RunScoring2D scoring; // optional, auto-found if empty
 
     [Header("Throw")]
-    [SerializeField] float throwMultiplier = 1.0f;
-    [SerializeField] float maxThrowSpeed = 15f;
+    [SerializeField] float throwMultiplier = 1.4f;
+    [SerializeField] float maxThrowSpeed = 1000f;
 
     [Header("Velocity sampling (for consistent throws)")]
     [SerializeField, Range(3, 20)] int velocitySampleCount = 8;
@@ -48,11 +48,13 @@ public class FingerGrabInertia2D : MonoBehaviour
     [Tooltip("While dragging, ball becomes kinematic and we set rb.position directly.")]
     [SerializeField] bool kinematicWhileDragging = true;
 
+    [Header("Flight Damping")]
+    [SerializeField, Min(0f)] float flightLinearDamping = 1.4f;
+
     [Header("Touch safety")]
     [Tooltip("If 3+ fingers are down, we cancel drag so pause/cancel gestures don't fling the ball.")]
     [SerializeField, Range(2, 6)] int cancelDragAtTouchCount = 3;
 
-    Camera cam;
     Rigidbody2D rb;
     CircleCollider2D circle;
 
@@ -95,7 +97,6 @@ public class FingerGrabInertia2D : MonoBehaviour
 
     void Awake()
     {
-        cam = Camera.main;
         rb = GetComponent<Rigidbody2D>();
         circle = GetComponent<CircleCollider2D>();
 
@@ -284,6 +285,9 @@ public class FingerGrabInertia2D : MonoBehaviour
             rb.bodyType = RigidbodyType2D.Kinematic;
         }
 
+        // Reset flight damping when picking up
+        rb.linearDamping = 0f;
+
         // NEW: If this was a miss, teleport ball under finger (clamped), zero offset.
         if (!LastPickupWasCatch)
         {
@@ -369,6 +373,9 @@ public class FingerGrabInertia2D : MonoBehaviour
         {
             WasThrown = true;
             WasDropped = false;
+
+            // Apply flight damping to the thrown ball
+            rb.linearDamping = flightLinearDamping;
         }
 
         sampleFilled = 0;
@@ -442,22 +449,17 @@ public class FingerGrabInertia2D : MonoBehaviour
 
     Bounds2D ComputeBounds()
     {
-        if (!cam) cam = Camera.main;
-
-        float z = cam.WorldToScreenPoint(rb.position).z;
-
-        Vector2 bl = cam.ViewportToWorldPoint(new Vector3(0f, 0f, z));
-        Vector2 tr = cam.ViewportToWorldPoint(new Vector3(1f, 1f, z));
+        GameViewport.GetWorldBounds(out var min, out var max);
 
         float r = BallRadiusWorld();
 
         return new Bounds2D
         {
             r = r,
-            minX = bl.x + boundsInset + r,
-            maxX = tr.x - boundsInset - r,
-            minY = bl.y + boundsInset + r,
-            maxY = tr.y - boundsInset - r
+            minX = min.x + boundsInset + r,
+            maxX = max.x - boundsInset - r,
+            minY = min.y + boundsInset + r,
+            maxY = max.y - boundsInset - r
         };
     }
 
@@ -553,10 +555,6 @@ public class FingerGrabInertia2D : MonoBehaviour
 
     Vector2 ScreenToWorld(Vector2 screenPos)
     {
-        if (!cam) cam = Camera.main;
-        float z = cam.WorldToScreenPoint(rb.position).z;
-
-        Vector3 w = cam.ScreenToWorldPoint(new Vector3(screenPos.x, screenPos.y, z));
-        return new Vector2(w.x, w.y);
+        return GameViewport.ScreenToWorld(screenPos);
     }
 }

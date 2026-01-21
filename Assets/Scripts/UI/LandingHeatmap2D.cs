@@ -81,11 +81,11 @@ public class LandingHeatmap2D : MonoBehaviour
         if (!show) return;
 
         bool armedAmp = powerups && powerups.ArmedId == landingAmpId;
-        bool lockedAmp = scoring && scoring.LandingAmpActiveThisThrow;
+        bool lockedAmp = powerups && powerups.LandingAmpActiveThisThrow;
         bool applyAmpForHeatmap = armedAmp || lockedAmp;
 
         bool armedInsurance = powerups && powerups.ArmedId == insuranceId;
-        bool lockedInsurance = scoring && scoring.InsuranceActiveThisThrow;
+        bool lockedInsurance = powerups && powerups.InsuranceActiveThisThrow;
         bool applyInsuranceForHeatmap = armedInsurance || lockedInsurance;
 
         if (applyAmpForHeatmap != lastApplyAmpForHeatmap ||
@@ -109,10 +109,10 @@ public class LandingHeatmap2D : MonoBehaviour
     public void ForceRefreshNow()
     {
         bool armedAmp = powerups && powerups.ArmedId == landingAmpId;
-        bool lockedAmp = scoring && scoring.LandingAmpActiveThisThrow;
+        bool lockedAmp = powerups && powerups.LandingAmpActiveThisThrow;
 
         bool armedInsurance = powerups && powerups.ArmedId == insuranceId;
-        bool lockedInsurance = scoring && scoring.InsuranceActiveThisThrow;
+        bool lockedInsurance = powerups && powerups.InsuranceActiveThisThrow;
 
         RebuildNow((armedAmp || lockedAmp), (armedInsurance || lockedInsurance));
     }
@@ -142,11 +142,7 @@ public class LandingHeatmap2D : MonoBehaviour
     {
         EnsureTexture();
 
-        Vector2 wallMinW, wallMaxW;
-        if (screenBounds)
-            screenBounds.GetPlayableWorldRect(out wallMinW, out wallMaxW);
-        else
-            scoring.GetWallWorldRect(out wallMinW, out wallMaxW);
+        GameViewport.GetWorldBounds(out var wallMinW, out var wallMaxW);
 
         float r = scoring.GetBallRadiusWorld();
         Vector2 reachMinW = wallMinW + Vector2.one * r;

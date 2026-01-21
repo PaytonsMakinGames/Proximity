@@ -6106,6 +6106,7 @@ GameObject:
   - component: {fileID: 519420031}
   - component: {fileID: 519420029}
   - component: {fileID: 519420030}
+  - component: {fileID: 519420033}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -6231,6 +6232,20 @@ Transform:
   m_Children: []
   m_Father: {fileID: 896068780}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &519420033
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 519420028}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 486169c4df67b5844bf7a75e927f8456, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::GameViewport
+  lockWorldHeight: 1
+  targetWorldHeight: 10
 --- !u!1 &598945878
 GameObject:
   m_ObjectHideFlags: 0
@@ -8010,12 +8025,6 @@ MonoBehaviour:
   distanceUnitScale: 1.25
   closenessExponent: 3
   maxMultiplier: 4
-  landingAmplifierId: landing_amplifier
-  landingAmpExponent: 7.5
-  landingAmpEdgeMult: 2
-  landingAmpCornerMult: 3
-  landingAmpMaxMultiplier: 6
-  insuranceId: insurance
   normalEdgeValue: 2
   normalCornerTotal: 4
   cappedEdgeValue: 1
@@ -8043,24 +8052,15 @@ MonoBehaviour:
   inventory: {fileID: 1255481622}
   powerups: {fileID: 2134150883}
   popups: {fileID: 1265776097}
-  stickyBallId: sticky_ball
-  stickyEndsRunFast: 1
-  stickyPopupColor: {r: 1, g: 0.390566, b: 0.94864273, a: 1}
-  landingAmpPopupColor: {r: 0.85, g: 0.9, b: 1, a: 1}
-  encorePopupColor: {r: 1, g: 0.9, b: 0.75, a: 1}
   stickyFullDistanceForNormalLanding: 4
-  hotSpotId: hot_spot
   hotSpotMarker: {fileID: 1672665188}
   hotSpotText: {fileID: 1269882585}
-  hotSpotColor: {r: 1, g: 0.75, b: 0.75, a: 1}
   hotSpotRadiusStart: 1
-  hotSpotShrinkFactorPerHit: 0.94
-  hotSpotMinRadius: 0.05
   hotSpotMinHitSpeed: 0.75
-  hotSpotDistancePerHit: 50
+  hotSpotHitCooldown: 0.05
   cancelRunKey: 120
   cancelRunFingerCount: 5
-  actions: {fileID: 2009420797}
+  actions: {fileID: 2009420798}
 --- !u!4 &1255481619
 Transform:
   m_ObjectHideFlags: 0
@@ -8397,7 +8397,7 @@ MonoBehaviour:
   m_fontColor32:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontColor: {r: 1, g: 1, b: 1, a: 1}
+  m_fontColor: {r: 0, g: 0, b: 0, a: 1}
   m_enableVertexGradient: 0
   m_colorMode: 3
   m_fontColorGradient:
@@ -14648,7 +14648,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::FingerFollow
   scoring: {fileID: 1255481618}
-  throwMultiplier: 2.2
+  throwMultiplier: 1.4
   maxThrowSpeed: 1000
   velocitySampleCount: 6
   velocitySampleWindow: 0.05
@@ -14666,6 +14666,7 @@ MonoBehaviour:
   wallTouchEpsilon: 0.02
   minInwardNormalSpeed: 0.75
   kinematicWhileDragging: 1
+  flightLinearDamping: 1.4
   cancelDragAtTouchCount: 3
 --- !u!50 &1704219535
 Rigidbody2D:
@@ -14771,7 +14772,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b07da3de9781d9842a05f8eff4f3aef9, type: 3}
   m_Name: 
   m_EditorClassIdentifier: '::'
-  actions: {fileID: 2009420797}
+  actions: {fileID: 0}
   scoring: {fileID: 1255481618}
   wallsLayerName: Walls
 --- !u!1 &1729377310
@@ -15489,6 +15490,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 2009420796}
+  - component: {fileID: 2009420798}
   - component: {fileID: 2009420797}
   m_Layer: 0
   m_Name: ActionManager
@@ -15521,59 +15523,89 @@ MonoBehaviour:
   m_GameObject: {fileID: 2009420795}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 1cd206bc24be892449e690b8caa28377, type: 3}
+  m_Script: {fileID: 11500000, guid: 996e88a551297df4a90ea31ddcce16de, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::ActionManager
-  scoring: {fileID: 1255481618}
+  m_EditorClassIdentifier: Assembly-CSharp::ActionRewarder
   inventory: {fileID: 2134150884}
   db: {fileID: 11400000, guid: d0f109d02b4741b47b1b9781fb602b65, type: 2}
-  grab: {fileID: 1704219534}
+  scoring: {fileID: 1255481618}
   popups: {fileID: 1265776097}
   ballRb: {fileID: 1704219535}
-  quickCatchMinSpeed: 10
-  wallFrenzyMinWalls: 30
-  wallFrenzyWallsPerUnit: 1.35
-  preLandingDecisionWindowSeconds: 0.5
   dropsWallFrenzy:
   - id: 
-    weight: 900
-  - id: landing_amplifier
-    weight: 350
+    weight: 100
   - id: hot_spot
-    weight: 300
+    weight: 50
+  - id: overtime
+    weight: 35
+  - id: landing_amplifier
+    weight: 20
+  - id: insurance
+    weight: 20
   - id: sticky_ball
-    weight: 250
+    weight: 15
   dropsQuickCatch:
   - id: 
-    weight: 850
-  - id: second_chance
-    weight: 400
-  - id: insurance
-    weight: 250
+    weight: 100
   - id: encore
-    weight: 200
+    weight: 50
+  - id: landing_amplifier
+    weight: 35
+  - id: overtime
+    weight: 30
+  - id: insurance
+    weight: 25
+  - id: hot_spot
+    weight: 20
   dropsGreed:
   - id: 
-    weight: 800
-  - id: landing_amplifier
-    weight: 350
-  - id: hot_spot
-    weight: 250
+    weight: 25
   - id: encore
-    weight: 200
+    weight: 60
+  - id: landing_amplifier
+    weight: 40
+  - id: overtime
+    weight: 30
+  - id: hot_spot
+    weight: 25
+  - id: sticky_ball
+    weight: 10
   dropsDesperation:
   - id: 
-    weight: 900
-  - id: second_chance
-    weight: 400
+    weight: 50
   - id: insurance
-    weight: 250
-  - id: sticky_ball
-    weight: 250
+    weight: 60
+  - id: landing_amplifier
+    weight: 35
+  - id: hot_spot
+    weight: 30
+  - id: overtime
+    weight: 25
+  - id: encore
+    weight: 15
+--- !u!114 &2009420798
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2009420795}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e1fb831c68538f54ab665b5db7a43c74, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ActionDetector
+  scoring: {fileID: 1255481618}
+  grab: {fileID: 1704219534}
+  rewarder: {fileID: 2009420797}
+  quickCatchMinSpeed: 8
+  wallFrenzyMinWalls: 8
+  wallFrenzyWallsPerUnit: 4
+  wallFrenzyMinCoverage: 0.25
+  wallFrenzyMinWallsHit: 4
+  preLandingDecisionWindowSeconds: 0.6
   predictedStopMarker: {fileID: 1860371655}
-  debugShowPrediction: 1
-  predictedMarkerFollowHz: 1.2
-  wallFrenzyMaxDominantAxisShare: 0.75
+  stopMarkerSmoothSpeed: 0.25
 --- !u!1 &2056547515
 GameObject:
   m_ObjectHideFlags: 0
@@ -15857,6 +15889,24 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PowerupManager
   db: {fileID: 11400000, guid: d0f109d02b4741b47b1b9781fb602b65, type: 2}
   inventory: {fileID: 2134150884}
+  popups: {fileID: 1265776097}
+  landingAmplifierId: landing_amplifier
+  landingAmpExponent: 3
+  landingAmpEdgeMult: 2
+  landingAmpCornerMult: 1.5
+  landingAmpMaxMultiplier: 6
+  landingAmpPopupColor: {r: 0.85, g: 0.9, b: 1, a: 1}
+  insuranceId: insurance
+  insurancePopupColor: {r: 0.85, g: 1, b: 0.85, a: 1}
+  stickyBallId: sticky_ball
+  hotSpotId: hot_spot
+  hotSpotDistancePerHit: 50
+  hotSpotColor: {r: 1, g: 0.75, b: 0.75, a: 1}
+  overtimeId: overtime
+  overtimeRampMidTime: 4
+  overtimeMaxMultiplier: 0.5
+  overtimePopupColor: {r: 1, g: 0.85, b: 0.5, a: 1}
+  encorePopupColor: {r: 1, g: 0.9, b: 0.75, a: 1}
 --- !u!114 &2134150884
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -15871,7 +15921,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PowerupInventory
   db: {fileID: 11400000, guid: d0f109d02b4741b47b1b9781fb602b65, type: 2}
   saveKey: PowerupInventory_v1
-  devSeedOnFirstInstall: 1
+  devSeedOnFirstInstall: 0
   devSeedEach: 1
 --- !u!4 &2134150885
 Transform:

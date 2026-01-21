@@ -1,54 +1,54 @@
 using UnityEngine;
 
+/// <summary>
+/// Manages wall colliders around the playable area.
+/// Uses GameViewport for responsive bounds calculation.
+/// </summary>
+[DefaultExecutionOrder(-150)]
 public class ScreenBounds2D : MonoBehaviour
 {
     [Header("Wall Shape")]
-    public float wallThickness = 1f;
-    public float inset = 0f;
+    [SerializeField] float wallThickness = 1f;
+    [SerializeField] float inset = 0f;
 
     [Header("Physics")]
-    public PhysicsMaterial2D wallMaterial;   // assign WallBouncy here
-    public bool useWallsLayer = true;
-    public string wallsLayerName = "Walls";
+    [SerializeField] PhysicsMaterial2D wallMaterial;
+    [SerializeField] bool useWallsLayer = true;
+    [SerializeField] string wallsLayerName = "Walls";
 
-    float left, right, bottom, top;
-
-    int lastW, lastH;
-    Camera cam;
+    int wallsLayer;
+    int lastScreenW, lastScreenH;
 
     void Awake()
     {
-        cam = Camera.main;
-        lastW = Screen.width;
-        lastH = Screen.height;
+        wallsLayer = useWallsLayer ? LayerMask.NameToLayer(wallsLayerName) : -1;
+        lastScreenW = Screen.width;
+        lastScreenH = Screen.height;
         Rebuild();
     }
 
     void Update()
     {
-        if (Screen.width != lastW || Screen.height != lastH)
+        if (Screen.width != lastScreenW || Screen.height != lastScreenH)
         {
-            lastW = Screen.width;
-            lastH = Screen.height;
+            lastScreenW = Screen.width;
+            lastScreenH = Screen.height;
             Rebuild();
         }
     }
 
     void Rebuild()
     {
-        if (!cam) cam = Camera.main;
-        if (!cam) return;
-
+        // Clear old walls
         for (int i = transform.childCount - 1; i >= 0; i--)
             Destroy(transform.GetChild(i).gameObject);
 
-        Vector2 bl = cam.ViewportToWorldPoint(new Vector3(0f, 0f, 0f));
-        Vector2 tr = cam.ViewportToWorldPoint(new Vector3(1f, 1f, 0f));
+        GameViewport.GetWorldBounds(out var min, out var max);
 
-        left = bl.x + inset;
-        right = tr.x - inset;
-        bottom = bl.y + inset;
-        top = tr.y - inset;
+        float left = min.x + inset;
+        float right = max.x - inset;
+        float bottom = min.y + inset;
+        float top = max.y - inset;
 
         float width = right - left;
         float height = top - bottom;
@@ -57,7 +57,7 @@ public class ScreenBounds2D : MonoBehaviour
         float cy = (bottom + top) * 0.5f;
         float t = Mathf.Max(0.0001f, wallThickness);
 
-        // NO OVERLAP at corners (important)
+        // Create walls (no corner overlap)
         CreateWall("Wall_Top",
             new Vector2(cx, top + t * 0.5f),
             new Vector2(width, t));
@@ -78,29 +78,16 @@ public class ScreenBounds2D : MonoBehaviour
     void CreateWall(string name, Vector2 pos, Vector2 size)
     {
         var go = new GameObject(name);
-
-        // Parent it, but then force identity so parent transform can't skew walls
         go.transform.SetParent(transform, false);
         go.transform.localRotation = Quaternion.identity;
         go.transform.localScale = Vector3.one;
-
-        // Because we're using world positions from ViewportToWorldPoint, set world position explicitly
         go.transform.position = new Vector3(pos.x, pos.y, 0f);
 
-        if (useWallsLayer)
-        {
-            int layer = LayerMask.NameToLayer(wallsLayerName);
-            if (layer != -1) go.layer = layer;
-        }
+        if (wallsLayer != -1)
+            go.layer = wallsLayer;
 
         var col = go.AddComponent<BoxCollider2D>();
         col.size = size;
         col.sharedMaterial = wallMaterial;
-    }
-
-    public void GetPlayableWorldRect(out Vector2 min, out Vector2 max)
-    {
-        min = new Vector2(left, bottom);
-        max = new Vector2(right, top);
     }
 }

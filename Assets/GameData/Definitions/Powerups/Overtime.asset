@@ -10,13 +10,13 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: b4bc85266e803cd4c9e01cee5d333c08, type: 3}
-  m_Name: Second Chance
+  m_Name: Overtime
   m_EditorClassIdentifier: Assembly-CSharp::PowerupDefinition
-  id: second_chance
-  displayName: Second Chance
-  trigger: 2
+  id: overtime
+  displayName: Overtime
+  trigger: 4
   icon: {fileID: 0}
-  description: 
+  description: Distance gain increases the longer the ball stays in motion.
   f0: 0
   f1: 0
   i0: 0

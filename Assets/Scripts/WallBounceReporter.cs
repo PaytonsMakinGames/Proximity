@@ -4,7 +4,7 @@ using UnityEngine;
 public class WallBounceReporter : MonoBehaviour
 {
     [Header("Refs (optional)")]
-    [SerializeField] ActionManager actions;
+    [SerializeField] ActionDetector actions;
     [SerializeField] RunScoring2D scoring;
 
     [Header("Filter")]
@@ -15,7 +15,7 @@ public class WallBounceReporter : MonoBehaviour
     void Awake()
     {
         if (!actions)
-            actions = FindFirstObjectByType<ActionManager>(FindObjectsInactive.Include);
+            actions = FindFirstObjectByType<ActionDetector>(FindObjectsInactive.Include);
 
         if (!scoring)
             scoring = FindFirstObjectByType<RunScoring2D>(FindObjectsInactive.Include);
@@ -42,7 +42,6 @@ public class WallBounceReporter : MonoBehaviour
             if (actions != null)
                 actions.OnWallBounce(wallId);
 
-            // Also let RunScoring2D process wall-contact-triggered powerups (Sticky Ball).
             if (scoring != null)
             {
                 Vector2 p = transform.position;
