@@ -17,7 +17,6 @@ public class ActionDetector : MonoBehaviour
 
     [Header("Wall Frenzy (All 4 Walls)")]
     [SerializeField] int wallFrenzyMinWalls = 12;
-    [SerializeField] float wallFrenzyWallsPerUnit = 6f;
     [SerializeField, Range(0.1f, 0.5f)] float wallFrenzyMinCoverage = 0.25f;
     [SerializeField] int wallFrenzyMinWallsHit = 4;
 
@@ -162,13 +161,7 @@ public class ActionDetector : MonoBehaviour
         if (wallFrenzyAwardedThisThrow) return;
         if (!scoring) return;
 
-        float fieldScale = GetFieldScale();
-        if (fieldScale <= 0.0001f) return;
-
-        int requiredWalls = Mathf.Max(wallFrenzyMinWalls,
-            Mathf.RoundToInt(fieldScale * wallFrenzyWallsPerUnit));
-
-        if (wallBouncesThisThrow >= requiredWalls)
+        if (wallBouncesThisThrow >= wallFrenzyMinWalls)
         {
             // Check distribution: all 4 walls hit with balanced coverage
             int minWallHits = Mathf.Min(leftHits, rightHits, topHits, bottomHits);
@@ -236,11 +229,5 @@ public class ActionDetector : MonoBehaviour
     {
         if (!scoring) return false;
         return scoring.RunActive && scoring.ThrowsLeft == 1;
-    }
-
-    float GetFieldScale()
-    {
-        Vector2 dims = GameViewport.GetWorldDimensions();
-        return dims.magnitude;
     }
 }

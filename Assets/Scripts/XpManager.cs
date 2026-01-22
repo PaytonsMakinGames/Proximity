@@ -16,6 +16,7 @@ public class XpManager : MonoBehaviour
 
     public event Action<int> OnXpChanged;   // sends new XP
     public event Action<int> OnLevelUp;     // sends new level
+    public event Action<int> OnLevelDown;   // sends new level (lower)
 
     bool pendingRunActive;
     int pendingRunScaledTotal;
@@ -111,6 +112,8 @@ public class XpManager : MonoBehaviour
         int afterLevel2 = Level;
         if (afterLevel2 > beforeLevel2)
             OnLevelUp?.Invoke(afterLevel2);
+        else if (afterLevel2 < beforeLevel2)
+            OnLevelDown?.Invoke(afterLevel2);
     }
 
     /// <summary>

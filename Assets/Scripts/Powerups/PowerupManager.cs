@@ -44,8 +44,9 @@ public class PowerupManager : MonoBehaviour
     bool hotSpotUsedThisRun;
     bool hotSpotSpawnedThisRun;
     bool hotSpotJustSpawnedThisThrow;  // True only the throw Hot Spot is first triggered
-    bool overtimeActiveThisThrow;
-    float overtimeStartTime;  // When this throw started
+    bool overtimeActiveThisRun;
+    bool overtimeUsedThisRun;
+    float overtimeElapsed;  // Total time spent in-air across all throws this run while moving
     bool encoreUsedThisRun;
     bool encoreReviveUsedThisRun;
 
@@ -55,7 +56,7 @@ public class PowerupManager : MonoBehaviour
     public bool HotSpotUsedThisRun => hotSpotUsedThisRun;
     public bool HotSpotSpawnedThisRun => hotSpotSpawnedThisRun;
     public bool HotSpotJustSpawnedThisThrow => hotSpotJustSpawnedThisThrow;
-    public bool OvertimeActiveThisThrow => overtimeActiveThisThrow;
+    public bool OvertimeActiveThisRun => overtimeActiveThisRun;
     public bool EncoreAnyUsedThisRun => encoreUsedThisRun || encoreReviveUsedThisRun;
 
     public event Action OnArmedChanged;
@@ -109,10 +110,20 @@ public class PowerupManager : MonoBehaviour
         hotSpotUsedThisRun = false;
         hotSpotSpawnedThisRun = false;
         hotSpotJustSpawnedThisThrow = false;
-        overtimeActiveThisThrow = false;
-        overtimeStartTime = 0f;
+        overtimeActiveThisRun = false;
+        overtimeUsedThisRun = false;
+        overtimeElapsed = 0f;
+    }
+
+    // Called by RunScoring2D when a new run starts. Reset Encore usage here so
+    // it cannot be used twice across a run end + revive window.
+    public void OnRunStarted()
+    {
         encoreUsedThisRun = false;
         encoreReviveUsedThisRun = false;
+        overtimeUsedThisRun = false;
+        overtimeActiveThisRun = false;
+        overtimeElapsed = 0f;
     }
 
     // Called by RunScoring2D when a new throw is released.
@@ -168,6 +179,13 @@ public class PowerupManager : MonoBehaviour
         // Encore
         else if (def.id == "encore")
         {
+            // Only one Encore per run (either mid-run +1 throw OR revive, not both)
+            if (EncoreAnyUsedThisRun)
+            {
+                Disarm_NoConsume();
+                return;
+            }
+
             if (TryConsumeIfArmedMatches(PowerupTrigger.NextThrowRelease))
             {
                 if (isEncoreRevive)
@@ -185,10 +203,17 @@ public class PowerupManager : MonoBehaviour
         // Overtime
         else if (def.id == overtimeId)
         {
+            if (overtimeUsedThisRun)
+            {
+                Disarm_NoConsume();
+                return;
+            }
+
             if (TryConsumeIfArmedMatches(PowerupTrigger.NextThrowRelease))
             {
-                overtimeActiveThisThrow = true;
-                overtimeStartTime = Time.time;
+                overtimeActiveThisRun = true;
+                overtimeUsedThisRun = true;
+                // Don't reset elapsed - accumulates across all throws in the run
                 if (popups)
                     popups.PopAtWorldWithExtraOffset(ballWorldPos, "Overtime!", overtimePopupColor, new Vector2(0f, 0f));
             }
@@ -201,12 +226,6 @@ public class PowerupManager : MonoBehaviour
         landingAmpActiveThisThrow = false;
         insuranceActiveThisThrow = false;
         hotSpotJustSpawnedThisThrow = false;
-    }
-
-    // Called by RunScoring2D after a landing multiplier is evaluated.
-    public void OnLandingEvaluated()
-    {
-        insuranceActiveThisThrow = false;
     }
 
     // Called by RunScoring2D when hot spot is exhausted or disappears
@@ -229,18 +248,25 @@ public class PowerupManager : MonoBehaviour
     public int GetHotSpotDistancePerHit() => hotSpotDistancePerHit;
     public string GetStickyBallId() => stickyBallId;
     public string GetHotSpotId() => hotSpotId;
+    public float GetOvertimeMaxBonus() => overtimeMaxMultiplier;
+
+    // Tick overtime timer only while ball is not held.
+    public void TickOvertime(bool isHeld)
+    {
+        if (!overtimeActiveThisRun) return;
+        if (isHeld) return;
+
+        overtimeElapsed += Time.deltaTime;
+    }
 
     // Calculate Overtime multiplier based on flight time
     public float GetOvertimeMultiplier()
     {
-        if (!overtimeActiveThisThrow) return 1f;
+        if (!overtimeActiveThisRun) return 1f;
 
-        float elapsed = Time.time - overtimeStartTime;
-
-        // Ramp curve: at 2s = 0.1, at 4s = 0.25, caps at 0.5
-        // Using smooth acceleration: (t / 4)^1.5 * 0.5, clamped
-        float t = Mathf.Clamp01(elapsed / overtimeRampMidTime);
-        float mult = Mathf.Pow(t, 1.5f) * overtimeMaxMultiplier;
+        // Linear ramp: progress from 0% to max% based on elapsed time vs ramp time
+        float t = Mathf.Clamp01(overtimeElapsed / overtimeRampMidTime);
+        float mult = t * overtimeMaxMultiplier;
 
         return 1f + mult;
     }

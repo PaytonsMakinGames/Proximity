@@ -6,8 +6,9 @@ public class XpHud : MonoBehaviour
 {
     [Header("UI")]
     [SerializeField] TextMeshProUGUI levelText;
-    [SerializeField] TextMeshProUGUI xpText;
-    [SerializeField] Image xpFill; // optional
+    [SerializeField] Image xpFill;
+    [SerializeField] TextMeshProUGUI untilNextText;
+    [SerializeField] TextMeshProUGUI totalXpText; // optional: for tooltip
 
     XpManager xp;
 
@@ -46,16 +47,23 @@ public class XpHud : MonoBehaviour
         float p = Mathf.Clamp01(xp.LevelProgress01);
         int toNext = XpCurveRS.XpToNextLevel(xpVal);
 
-        if (levelText) levelText.text = $"LV {level}";
+        // Level text above bar: "LVL 35"
+        if (levelText)
+            levelText.text = $"LVL {level}";
 
-        if (xpText)
+        // Progress bar
+        if (xpFill)
+            xpFill.fillAmount = p;
+
+        // Text below bar: "68,266 until next"
+        if (untilNextText)
         {
-            if (toNext <= 0)
-                xpText.text = $"{xpVal:n0} XP\nMAX";
-            else
-                xpText.text = $"{xpVal:n0} XP\n{toNext:n0} until next\n({p * 100f:0.#}%)";
+            // Show remaining XP to next level; if leveled, show 0 until next refresh
+            untilNextText.text = $"{Mathf.Max(0, toNext):n0}";
         }
 
-        if (xpFill) xpFill.fillAmount = p;
+        // Optional total XP display (can be shown/hidden via tap)
+        if (totalXpText)
+            totalXpText.text = $"{xpVal:n0} XP";
     }
 }

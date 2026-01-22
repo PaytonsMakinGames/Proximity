@@ -55,6 +55,12 @@ public class FingerGrabInertia2D : MonoBehaviour
     [Tooltip("If 3+ fingers are down, we cancel drag so pause/cancel gestures don't fling the ball.")]
     [SerializeField, Range(2, 6)] int cancelDragAtTouchCount = 3;
 
+    [Header("Pause blocking")]
+    [Tooltip("Block pause gesture for this duration after releasing a throw.")]
+    [SerializeField, Min(0f)] float pauseBlockDurationAfterThrow = 0.3f;
+
+    float pauseBlockTimer;
+
     Rigidbody2D rb;
     CircleCollider2D circle;
 
@@ -77,6 +83,8 @@ public class FingerGrabInertia2D : MonoBehaviour
 
     public Vector2 CurrentDragScreenPos { get; private set; }
     public Vector2 CurrentDragWorldPos { get; private set; }
+
+    public bool ShouldBlockPauseGesture => isDragging || pauseBlockTimer > 0f;
 
     Vector2 dragOffsetWorld;
 
@@ -115,6 +123,10 @@ public class FingerGrabInertia2D : MonoBehaviour
 
     void Update()
     {
+        // Tick pause block timer
+        if (pauseBlockTimer > 0f)
+            pauseBlockTimer -= Time.deltaTime;
+
         if (GameInputLock.Locked)
         {
             if (isDragging) CancelDragNoThrow();
@@ -299,6 +311,12 @@ public class FingerGrabInertia2D : MonoBehaviour
 
             rb.position = snapped;
             dragOffsetWorld = Vector2.zero;
+
+            // Clear trail to prevent line from old position to teleported position
+            ClearAllTrails();
+
+            // Temporarily disable trails so they don't capture the teleport transition
+            StartCoroutine(ResetTrailsAfterTeleport());
         }
         else
         {
@@ -347,6 +365,9 @@ public class FingerGrabInertia2D : MonoBehaviour
         isDragging = false;
 
         draggingTouchId = -1;
+
+        // Block pause gesture briefly after throwing
+        pauseBlockTimer = pauseBlockDurationAfterThrow;
 
         if (kinematicWhileDragging)
             rb.bodyType = savedBodyType;
@@ -552,6 +573,39 @@ public class FingerGrabInertia2D : MonoBehaviour
     }
 
     static Vector2 Perp(Vector2 n) => new Vector2(-n.y, n.x);
+
+    void ClearAllTrails()
+    {
+        // Clear any TrailRenderer components on this GameObject or children
+        var trails = GetComponentsInChildren<TrailRenderer>(true);
+        foreach (var trail in trails)
+        {
+            if (trail) trail.Clear();
+        }
+    }
+
+    System.Collections.IEnumerator ResetTrailsAfterTeleport()
+    {
+        // Disable trails to prevent them from recording during the teleport
+        var trails = GetComponentsInChildren<TrailRenderer>(true);
+        foreach (var trail in trails)
+        {
+            if (trail) trail.emitting = false;
+        }
+
+        // Wait a frame to let physics settle
+        yield return null;
+
+        // Re-enable trails to start fresh
+        foreach (var trail in trails)
+        {
+            if (trail)
+            {
+                trail.Clear();
+                trail.emitting = true;
+            }
+        }
+    }
 
     Vector2 ScreenToWorld(Vector2 screenPos)
     {

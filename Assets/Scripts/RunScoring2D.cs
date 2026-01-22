@@ -149,6 +149,7 @@ public class RunScoring2D : MonoBehaviour
 
     // Runtime state
     bool hotSpotInside;
+    Vector2 hotSpotLastPos;
     Vector2 hotSpotCenter;
     float hotSpotRadius;
     int hotSpotBonusDistanceThisRun;
@@ -163,11 +164,14 @@ public class RunScoring2D : MonoBehaviour
 
     bool cancelGestureArmed = true;
 
-    int EffectiveThrowsPerRun
+    public int EffectiveThrowsPerRun
     {
         get
         {
-            int bonus = inventory ? inventory.GetBonusThrows() : 0;
+            // Only apply inventory bonus throws during an active run.
+            // Between runs, use only base throws + any bonus throws earned this run.
+            // This prevents skin changes from incorrectly adding throws when run is ended.
+            int bonus = (streakActive && inventory) ? inventory.GetBonusThrows() : 0;
             return Mathf.Max(0, throwsPerRun + bonus + bonusThrowsThisRun);
         }
     }
@@ -338,6 +342,9 @@ public class RunScoring2D : MonoBehaviour
             activeLandingPs.transform.position = BallPosWithVfxZ();
 
         bool isHeld = !pausedOrLocked && grab && grab.IsDragging;
+        if (!pausedOrLocked && powerups)
+            powerups.TickOvertime(isHeld);
+
         UpdateHotSpotHitState(isHeld);
         bool wasThrownFlag = !pausedOrLocked && grab && grab.WasThrown;
         bool wasDroppedFlag = !pausedOrLocked && grab && grab.WasDropped;
@@ -352,19 +359,29 @@ public class RunScoring2D : MonoBehaviour
 
         if (throwEvent)
         {
+            // If this is the first throw of a new run, initialize run state BEFORE processing powerups
+            if (!streakActive)
+            {
+                if (powerups) powerups.OnRunStarted();
+                if (actions) actions.OnRunStarted();
+            }
+
             // Let PowerupManager handle all throw-release powerup logic
             if (powerups && ballRb)
             {
-                // Check for Encore revive
+                // Check for Encore revive (after a latched run, before a new streak starts)
                 bool isEncoreRevive = !streakActive && pendingRunAdjustActive && !powerups.EncoreAnyUsedThisRun;
-                powerups.OnThrowReleased((Vector2)ballRb.position, isEncoreRevive);
 
-                // Handle Encore side effects (bonus throws, etc)
-                var def = powerups.GetArmedDef();
-                if (def && def.id == "encore")
+                // Detect Encore consumption on THIS throw
+                bool encoreWasUsed = powerups.EncoreAnyUsedThisRun;
+                powerups.OnThrowReleased((Vector2)ballRb.position, isEncoreRevive);
+                bool encoreJustUsed = !encoreWasUsed && powerups.EncoreAnyUsedThisRun;
+
+                if (encoreJustUsed)
                 {
-                    if (isEncoreRevive && powerups.EncoreAnyUsedThisRun)
+                    if (isEncoreRevive)
                     {
+                        // Revive the just-ended run and grant +1 throw
                         streakActive = true;
                         resultLatched = false;
                         bonusThrowsThisRun += 1;
@@ -372,9 +389,11 @@ public class RunScoring2D : MonoBehaviour
                         UpdateThrowsUi();
                         stopTimer = 0f;
                     }
-                    else if (streakActive && powerups.EncoreAnyUsedThisRun && !powerups.HasArmed)
+                    else if (streakActive)
                     {
+                        // Mid-run Encore: +1 throw and clear exhaustion
                         bonusThrowsThisRun += 1;
+                        throwsExhausted = false;
                         UpdateThrowsUi();
                     }
                 }
@@ -385,6 +404,7 @@ public class RunScoring2D : MonoBehaviour
                     hotSpotCenter = ballRb.position;
                     hotSpotRadius = hotSpotRadiusStart;
                     hotSpotInside = false;
+                    hotSpotLastPos = ballRb.position;
                     hotSpotBonusDistanceThisRun = 0;
                     hotSpotTotalPointsThisRun = 0;  // Reset points for this hot spot instance
                     HotSpot_SetVisualsActive(true);
@@ -406,6 +426,7 @@ public class RunScoring2D : MonoBehaviour
                     // Keep visual active but don't reposition - it stays where it spawned
                     HotSpot_SetVisualsActive(true);
                     hotSpotInside = IsBallOverlappingHotSpot(ballRb.position);
+                    hotSpotLastPos = ballRb.position;
                 }
             }
 
@@ -775,6 +796,27 @@ public class RunScoring2D : MonoBehaviour
         return (ballCenter - hotSpotCenter).sqrMagnitude <= (rSum * rSum);
     }
 
+    // Swept test: does segment from a->b intersect hot spot circle (expanded by ball radius)?
+    bool DidSweepHitHotSpot(Vector2 a, Vector2 b)
+    {
+        if (!powerups || !powerups.HotSpotSpawnedThisRun) return false;
+
+        WorldBounds w = ComputeBounds();
+        float ballR = w.r;
+        float r = hotSpotRadius + ballR;
+        Vector2 center = hotSpotCenter;
+
+        Vector2 ab = b - a;
+        Vector2 ac = center - a;
+        float abLenSq = ab.sqrMagnitude;
+        if (abLenSq <= 0.000001f)
+            return ac.sqrMagnitude <= r * r;
+
+        float t = Mathf.Clamp01(Vector2.Dot(ac, ab) / abLenSq);
+        Vector2 closest = a + ab * t;
+        return (closest - center).sqrMagnitude <= r * r;
+    }
+
     // Call every frame to detect outside->inside entry hits
     void UpdateHotSpotHitState(bool isHeld)
     {
@@ -786,18 +828,24 @@ public class RunScoring2D : MonoBehaviour
         if (isHeld)
         {
             hotSpotInside = IsBallOverlappingHotSpot(ballRb.position);
+            hotSpotLastPos = ballRb.position;
             return;
         }
 
-        bool insideNow = IsBallOverlappingHotSpot(ballRb.position);
+        Vector2 posNow = ballRb.position;
+        bool insideNow = IsBallOverlappingHotSpot(posNow);
+
+        // Catch fast passes that skip insideNow due to high speed
+        bool sweptHit = !hotSpotInside && DidSweepHitHotSpot(hotSpotLastPos, posNow);
 
         // Count a hit only on outside->inside transition (and not too soon after last hit)
-        if (insideNow && !hotSpotInside)
+        if ((insideNow || sweptHit) && !hotSpotInside)
         {
             float timeSinceLastHit = Time.time - hotSpotLastHitTime;
             if (timeSinceLastHit < hotSpotHitCooldown)
             {
-                hotSpotInside = insideNow;
+                hotSpotInside = insideNow || sweptHit;
+                hotSpotLastPos = posNow;
                 return;  // Cooldown active, ignore this hit
             }
 
@@ -841,6 +889,7 @@ public class RunScoring2D : MonoBehaviour
         }
 
         hotSpotInside = insideNow;
+        hotSpotLastPos = posNow;
     }
 
     // ---------------- Events ----------------
@@ -915,6 +964,9 @@ public class RunScoring2D : MonoBehaviour
             pendingBestBaseline = 0f;
         }
 
+        // OnRunStarted is now called earlier in throwEvent before powerups are processed
+        // Don't call it again here or it will reset powerup state
+
         streakActive = true;
         stopTimer = 0f;
 
@@ -932,7 +984,8 @@ public class RunScoring2D : MonoBehaviour
         encoreUsedThisRun = false;
         encoreReviveUsedThisRun = false;
 
-        if (actions) actions.OnRunStarted();
+        // ActionDetector OnRunStarted was already called earlier in throwEvent
+        // No need to call it again here
 
         resultLatched = false;
 
@@ -1048,8 +1101,8 @@ public class RunScoring2D : MonoBehaviour
 
         float step = delta.magnitude * Mathf.Max(0.0001f, distanceUnitScale);
 
-        // Apply Overtime multiplier if active
-        if (powerups && powerups.OvertimeActiveThisThrow)
+        // Apply Overtime multiplier if active (before Hot Spot bonus so they don't stack)
+        if (powerups && powerups.OvertimeActiveThisRun)
         {
             step *= powerups.GetOvertimeMultiplier();
         }

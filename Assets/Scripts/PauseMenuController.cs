@@ -8,6 +8,9 @@ public class PauseMenuController : MonoBehaviour
     [SerializeField] CanvasGroup lockerGroup;  // LockerCanvas root CanvasGroup
     [SerializeField] CanvasGroup hudGroup;     // HUDCanvas root CanvasGroup (optional)
 
+    [Header("Refs")]
+    [SerializeField] FingerGrabInertia2D grab;
+
     [Header("PC simulate")]
     [SerializeField] KeyCode toggleKey = KeyCode.P;
 
@@ -19,6 +22,8 @@ public class PauseMenuController : MonoBehaviour
 
     void Awake()
     {
+        if (!grab)
+            grab = FindFirstObjectByType<FingerGrabInertia2D>(FindObjectsInactive.Include);
         ForceAllClosed();
     }
 
@@ -33,6 +38,10 @@ public class PauseMenuController : MonoBehaviour
 
     void CheckPauseGesture()
     {
+        // Block pause if ball is being dragged or just released
+        if (grab && grab.ShouldBlockPauseGesture)
+            return;
+
         int count = Input.touchCount;
 
         // Fully released -> re-arm gesture + clear block
