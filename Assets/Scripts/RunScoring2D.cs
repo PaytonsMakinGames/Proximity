@@ -19,8 +19,12 @@ public class RunScoring2D : MonoBehaviour
     [SerializeField] Transform vfxPoolRoot;
 
     [Header("UI")]
-    [SerializeField] TextMeshProUGUI scoreText;
+    [SerializeField] TextMeshProUGUI distanceText;
+    [SerializeField] TextMeshProUGUI landMultText;
+    [SerializeField] TextMeshProUGUI xpMultText;
+    [SerializeField] TextMeshProUGUI finalScoreText;
     [SerializeField] TextMeshProUGUI bestText;
+    [SerializeField] TextMeshProUGUI overtimeComparisonText;
 
     [Header("Totals UI")]
     [SerializeField] TextMeshProUGUI totalDistanceText;
@@ -49,6 +53,9 @@ public class RunScoring2D : MonoBehaviour
     [Header("Score Text Dimming")]
     [SerializeField] Color scoreTextLiveColor = new Color(1f, 1f, 1f, 1f);
     [SerializeField] Color scoreTextEndedColor = new Color(1f, 1f, 1f, 0.35f);
+    [SerializeField] Color finalScoreColor = new Color(1f, 0.2f, 0.2f, 1f);  // Red
+    [SerializeField] Color overtimeBonusColor = new Color(1f, 0.85f, 0.5f, 1f);
+    [SerializeField] Color hotSpotBonusColor = new Color(1f, 0.75f, 0.75f, 1f); // Match Hot Spot popup
 
     [Header("Ruler Fade")]
     [SerializeField] float rulerFadeExponent = 1.5f;
@@ -79,17 +86,6 @@ public class RunScoring2D : MonoBehaviour
     [SerializeField] float laneHalfWidth = 0.35f;
     [SerializeField] LaneAxisMode laneAxisMode = LaneAxisMode.AutoFromInitialVelocity;
     [SerializeField] ForcedLaneAxis forcedLaneAxis = ForcedLaneAxis.Vertical;
-
-    [Header("Catch Multiplier Gain")]
-    [SerializeField] float catchGainSpeedMin = 3.5f;
-    [SerializeField] float catchGainSpeedMax = 100f;
-    [SerializeField] float catchGainAtMin = 0.00f;
-    [SerializeField] float catchGainAtMax = 0.10f;
-    [SerializeField] float catchMultiplierCap = 0f;
-
-    [Header("Miss Penalty (keeps streak alive)")]
-    [Tooltip("0.75 = remove 25% of the gap back to 1.00x each miss.")]
-    [SerializeField, Range(0f, 1f)] float missPenaltyKeep01 = 0.75f;
 
     [Header("Run Throw Limit")]
     [SerializeField, Min(0)] int throwsPerRun = 7;
@@ -168,10 +164,9 @@ public class RunScoring2D : MonoBehaviour
     {
         get
         {
-            // Only apply inventory bonus throws during an active run.
-            // Between runs, use only base throws + any bonus throws earned this run.
-            // This prevents skin changes from incorrectly adding throws when run is ended.
-            int bonus = (streakActive && inventory) ? inventory.GetBonusThrows() : 0;
+            // Apply inventory bonus throws from equipped ball (always visible in UI).
+            // During runs, include run-earned bonus throws as well.
+            int bonus = inventory ? inventory.GetBonusThrows() : 0;
             return Mathf.Max(0, throwsPerRun + bonus + bonusThrowsThisRun);
         }
     }
@@ -194,7 +189,16 @@ public class RunScoring2D : MonoBehaviour
 
     float stopTimer;
     float travelDistance;
-    float catchMultiplier = 1f;
+    float travelDistanceWithoutOvertime;  // For comparison display
+    float hotSpotBonusDistance;  // Separate tracker so Hot Spot doesn't interfere with overtime bonus calc
+
+    // Overtime snapshot for Encore revive
+    bool savedOvertimeActive;
+    bool savedOvertimeUsed;
+    float savedOvertimeElapsed;
+
+    int overtimeBonusDisplayed;  // Only increases, never decreases
+    int firstPowerupUsed;  // 0 = none, 1 = overtime, 2 = hot spot (used to reorder UI)
 
     float laneCenterX, laneCenterY;
     float shownLandingMult = 1f;
@@ -281,7 +285,10 @@ public class RunScoring2D : MonoBehaviour
 
         bestDefaultColor = bestNormalColor;
 
-        if (scoreText) scoreText.richText = true;
+        if (distanceText) distanceText.richText = true;
+        if (landMultText) landMultText.richText = true;
+        if (xpMultText) xpMultText.richText = true;
+        if (finalScoreText) finalScoreText.richText = true;
         if (bestText)
         {
             bestText.color = bestDefaultColor;
@@ -359,23 +366,29 @@ public class RunScoring2D : MonoBehaviour
 
         if (throwEvent)
         {
-            // If this is the first throw of a new run, initialize run state BEFORE processing powerups
-            if (!streakActive)
-            {
-                if (powerups) powerups.OnRunStarted();
-                if (actions) actions.OnRunStarted();
-            }
-
-            // Let PowerupManager handle all throw-release powerup logic
+            // Let PowerupManager handle all throw-release powerup logic first,
+            // so Encore revive can be detected before deciding a new run start.
             if (powerups && ballRb)
             {
                 // Check for Encore revive (after a latched run, before a new streak starts)
                 bool isEncoreRevive = !streakActive && pendingRunAdjustActive && !powerups.EncoreAnyUsedThisRun;
 
+                // If NOT a revive and we're not in a run yet, start a brand-new run BEFORE processing powerups
+                if (!streakActive && !isEncoreRevive)
+                {
+                    if (powerups) powerups.OnRunStarted();
+                    // Do NOT reset Overtime here; let it persist across multiple throws in logical sequence
+                    if (actions) actions.OnRunStarted();
+                }
+
                 // Detect Encore consumption on THIS throw
                 bool encoreWasUsed = powerups.EncoreAnyUsedThisRun;
                 powerups.OnThrowReleased((Vector2)ballRb.position, isEncoreRevive);
                 bool encoreJustUsed = !encoreWasUsed && powerups.EncoreAnyUsedThisRun;
+
+                // Mark Overtime as first powerup if it was just activated and not already set
+                if (powerups.OvertimeUsedThisRun && firstPowerupUsed == 0)
+                    firstPowerupUsed = 1;  // 1 = Overtime
 
                 if (encoreJustUsed)
                 {
@@ -388,6 +401,14 @@ public class RunScoring2D : MonoBehaviour
                         throwsExhausted = false;
                         UpdateThrowsUi();
                         stopTimer = 0f;
+
+                        // Restore overtime state if it was active before the run ended
+                        if (powerups && savedOvertimeUsed)
+                        {
+                            powerups.RestoreOvertimeSnapshot(savedOvertimeActive, savedOvertimeUsed, savedOvertimeElapsed);
+                        }
+
+                        UpdateOvertimeComparisonUI();
                     }
                     else if (streakActive)
                     {
@@ -398,9 +419,15 @@ public class RunScoring2D : MonoBehaviour
                     }
                 }
 
+                // If this was a revive, we already kept the previous run active above.
+
                 // Handle Hot Spot initialization (only on first throw when spawned)
                 if (powerups.HotSpotJustSpawnedThisThrow && ballRb)
                 {
+                    // Mark Hot Spot as first powerup if not already set
+                    if (firstPowerupUsed == 0)
+                        firstPowerupUsed = 2;  // 2 = Hot Spot
+
                     hotSpotCenter = ballRb.position;
                     hotSpotRadius = hotSpotRadiusStart;
                     hotSpotInside = false;
@@ -445,7 +472,6 @@ public class RunScoring2D : MonoBehaviour
             if (!streakActive)
                 return;
 
-            ConsumeThrow(fromMiss: false);
             EndStreak_DropInstant();
         }
 
@@ -868,9 +894,13 @@ public class RunScoring2D : MonoBehaviour
 
                 // Award only up to the cap
                 bonus = Mathf.Min(bonus, remainingCapacity);
-                travelDistance += bonus;
+                // Hot Spot adds as a separate flat bonus (not to base, to avoid interfering with overtime bonus calc)
+                hotSpotBonusDistance += bonus;
                 hotSpotBonusDistanceThisRun += bonus;
                 hotSpotTotalPointsThisRun += bonus;
+                BankDistance(bonus);
+                UpdateTotalsUI_LiveBanked();
+                SaveTotalsIfDirty(false);
 
                 // Linear shrink: 20 increments from start size to 0
                 hotSpotRadius = Mathf.Max(0f, hotSpotRadius - (hotSpotRadiusStart / 20f));
@@ -949,11 +979,6 @@ public class RunScoring2D : MonoBehaviour
             hotSpotInside = IsBallOverlappingHotSpot(ballRb.position);
     }
 
-    void UpdateHotSpotHitState()
-    {
-        // This method exists if there were hit state tracking calls
-    }
-
     void StartStreak()
     {
         // Starting a brand new run closes the previous run's adjust window.
@@ -970,10 +995,22 @@ public class RunScoring2D : MonoBehaviour
         streakActive = true;
         stopTimer = 0f;
 
-        travelDistance = 0f;
+        // IMPORTANT: Only reset cumulative distances and overtime bonus when starting a TRUE NEW RUN
+        // (when resultLatched is true, meaning the previous run ended).
+        // If we're throwing again within the same run, DO NOT reset these.
+        if (resultLatched)
+        {
+            // Truly new run - reset everything
+            travelDistance = 0f;
+            travelDistanceWithoutOvertime = 0f;
+            hotSpotBonusDistance = 0f;
+            overtimeBonusDisplayed = 0;
+            firstPowerupUsed = 0;
+        }
+        // else: continuing within same run - keep cumulative distances and overtime bonus
+
         lastRunPos = ballRb.position;
 
-        catchMultiplier = 1f;
         catchesThisRun = 0;
 
         throwsUsedThisRun = 0;
@@ -1001,7 +1038,12 @@ public class RunScoring2D : MonoBehaviour
 
         laneBroken = false;
 
-        if (scoreText) scoreText.text = "";
+        savedOvertimeActive = false;
+        savedOvertimeUsed = false;
+        savedOvertimeElapsed = 0f;
+
+        HideAllScoreElements();
+        if (overtimeComparisonText) overtimeComparisonText.text = "";
         HideAll();
     }
 
@@ -1014,20 +1056,10 @@ public class RunScoring2D : MonoBehaviour
         if (wasCatch)
         {
             catchesThisRun++;
-
-            float catchSpeed = grab ? grab.LastPickupSpeed : 0f;
-            catchMultiplier += ComputeCatchGainFromSpeed(catchSpeed);
-
-            if (catchMultiplierCap > 0f)
-                catchMultiplier = Mathf.Min(catchMultiplier, catchMultiplierCap);
-
             stopTimer = 0f;
             landingAllowedThisSegment = false;
             return;
         }
-
-        catchMultiplier = 1f + (catchMultiplier - 1f) * Mathf.Clamp01(missPenaltyKeep01);
-        if (catchMultiplier < 1f) catchMultiplier = 1f;
 
         stopTimer = 0f;
         landingAllowedThisSegment = false;
@@ -1087,19 +1119,13 @@ public class RunScoring2D : MonoBehaviour
         UpdateThrowsUi();
     }
 
-    float ComputeCatchGainFromSpeed(float speed)
-    {
-        if (catchGainSpeedMax <= catchGainSpeedMin) return catchGainAtMin;
-        float t = Mathf.Clamp01(Mathf.InverseLerp(catchGainSpeedMin, catchGainSpeedMax, speed));
-        return Mathf.Lerp(catchGainAtMin, catchGainAtMax, t);
-    }
-
     void TickStreakFlight()
     {
         Vector2 p = ballRb.position;
         Vector2 delta = p - lastRunPos;
 
         float step = delta.magnitude * Mathf.Max(0.0001f, distanceUnitScale);
+        float baseStep = step;  // Store base step before multiplier
 
         // Apply Overtime multiplier if active (before Hot Spot bonus so they don't stack)
         if (powerups && powerups.OvertimeActiveThisRun)
@@ -1108,7 +1134,18 @@ public class RunScoring2D : MonoBehaviour
         }
 
         travelDistance += step;
+        travelDistanceWithoutOvertime += baseStep;
         lastRunPos = p;
+
+        // Update overtime bonus display (ratcheting): difference between multiplied and base distances
+        if (powerups && powerups.OvertimeActiveThisRun)
+        {
+            int currentBonus = RoundInt(travelDistance) - RoundInt(travelDistanceWithoutOvertime);
+            overtimeBonusDisplayed = Mathf.Max(overtimeBonusDisplayed, currentBonus);
+        }
+
+        // Update overtime comparison UI
+        UpdateOvertimeComparisonUI();
 
         if (powerups && powerups.StickyThrowActive)
         {
@@ -1171,17 +1208,25 @@ public class RunScoring2D : MonoBehaviour
         ClearHotSpotAll();
 
         streakActive = false;
-        if (powerups) powerups.OnRunEnded();
+        if (powerups)
+        {
+            (savedOvertimeActive, savedOvertimeUsed, savedOvertimeElapsed) = powerups.GetOvertimeSnapshot();
+            powerups.OnRunEnded();
+        }
         lastRunNoLanding = true;
 
         BankRemainingDistance();
 
         int distInt = RoundInt(travelDistance);
-        float catchShown = Round3(catchMultiplier);
+        int distBase = RoundInt(travelDistanceWithoutOvertime);
+        int distHotSpot = RoundInt(hotSpotBonusDistance);
+        int overtimeFinalBonus = Mathf.Max(0, distInt - distBase);
+        overtimeBonusDisplayed = Mathf.Max(overtimeBonusDisplayed, overtimeFinalBonus);
+
         float landingShown = 1f;
         float xpMultShown = Round2(GetXpMultRaw());
 
-        latchedSnapshot = BuildSnapshot(distInt, catchShown, landingShown, xpMultShown);
+        latchedSnapshot = BuildSnapshot(distInt, distBase, distHotSpot, overtimeBonusDisplayed, landingShown, xpMultShown);
         resultLatched = true;
 
         UpdateScoreText();
@@ -1194,7 +1239,10 @@ public class RunScoring2D : MonoBehaviour
         showLandingInfo = false;
         shownLandingMult = 1f;
 
+        if (overtimeComparisonText) overtimeComparisonText.text = "";
+
         if (actions) actions.OnRunEnded();
+        UpdateThrowsUi();
     }
 
     void EndStreak_Stop()
@@ -1203,7 +1251,11 @@ public class RunScoring2D : MonoBehaviour
         ClearStickyIfAny();
 
         streakActive = false;
-        if (powerups) powerups.OnRunEnded();
+        if (powerups)
+        {
+            (savedOvertimeActive, savedOvertimeUsed, savedOvertimeElapsed) = powerups.GetOvertimeSnapshot();
+            powerups.OnRunEnded();
+        }
         BankRemainingDistance();
 
         bool landingShownToPlayer = landingAllowedThisSegment && showLandingInfo;
@@ -1218,11 +1270,14 @@ public class RunScoring2D : MonoBehaviour
         }
 
         int distInt = RoundInt(travelDistance);
-        float catchShown = Round3(catchMultiplier);
+        int distBase = RoundInt(travelDistanceWithoutOvertime);
+        int distHotSpot = RoundInt(hotSpotBonusDistance);
+        int overtimeFinalBonus = Mathf.Max(0, distInt - distBase);
+        overtimeBonusDisplayed = Mathf.Max(overtimeBonusDisplayed, overtimeFinalBonus);
         float landingShown = landingShownToPlayer ? Round2(shownLandingMult) : 1f;
         float xpMultShown = Round2(GetXpMultRaw());
 
-        latchedSnapshot = BuildSnapshot(distInt, catchShown, landingShown, xpMultShown);
+        latchedSnapshot = BuildSnapshot(distInt, distBase, distHotSpot, overtimeBonusDisplayed, landingShown, xpMultShown);
         resultLatched = true;
 
         UpdateScoreText();
@@ -1251,6 +1306,8 @@ public class RunScoring2D : MonoBehaviour
 
         if (actions) actions.OnRunEnded();
         ClearHotSpotAll();
+
+        if (overtimeComparisonText) overtimeComparisonText.text = "";
     }
 
     void AwardXp(int xpToAdd)
@@ -1519,16 +1576,13 @@ public class RunScoring2D : MonoBehaviour
 
     // ---------------- UI ----------------
 
-    string CatchLineText(float multShown)
-    {
-        int n = catchesThisRun;
-        return $"{n} {(n == 1 ? "catch" : "catches")} x{multShown:F3}";
-    }
-
     struct RunSnapshot
     {
         public int distInt;
-        public float catchShown;
+        public int distBase;
+        public int distHotSpot;
+        public int overtimeBonus;
+        public int distForScore;
         public float landingShown;
         public float xpMultShown;
         public int xpPct;
@@ -1537,18 +1591,23 @@ public class RunScoring2D : MonoBehaviour
 
     RunSnapshot latchedSnapshot; // add this as a field near your other state
 
-    RunSnapshot BuildSnapshot(int distInt, float catchShown, float landingShown, float xpMultShown)
+    RunSnapshot BuildSnapshot(int distInt, int distBase, int distHotSpot, int overtimeBonus, float landingShown, float xpMultShown)
     {
         RunSnapshot s = default;
 
         s.distInt = Mathf.Max(0, distInt);
-        s.catchShown = catchShown;
+        s.distBase = Mathf.Max(0, distBase);
+        s.distHotSpot = Mathf.Max(0, distHotSpot);
+        s.overtimeBonus = Mathf.Max(0, overtimeBonus);
         s.landingShown = landingShown;
 
         s.xpMultShown = xpMultShown;
         s.xpPct = Mathf.RoundToInt((xpMultShown - 1f) * 100f);
 
-        float raw = (s.distInt * s.catchShown * s.landingShown * s.xpMultShown);
+        // Score distance uses base distance + Hot Spot + displayed overtime bonus
+        s.distForScore = Mathf.Max(0, s.distBase + s.distHotSpot + s.overtimeBonus);
+
+        float raw = (s.distForScore * s.landingShown * s.xpMultShown);
         s.xpTotal = Mathf.RoundToInt(raw);
 
         return s;
@@ -1557,12 +1616,14 @@ public class RunScoring2D : MonoBehaviour
     RunSnapshot BuildLiveSnapshot()
     {
         int distInt = RoundInt(travelDistance);
-        float catchShown = Round3(catchMultiplier);
+        int distBase = RoundInt(travelDistanceWithoutOvertime);
+        int distHotSpot = RoundInt(hotSpotBonusDistance);
+        int overtimeBonus = Mathf.Max(0, overtimeBonusDisplayed);
         float landingShown = showLandingInfo ? Round2(shownLandingMult) : 1f;
 
         float xpMultShown = Round2(GetXpMultRaw());
 
-        return BuildSnapshot(distInt, catchShown, landingShown, xpMultShown);
+        return BuildSnapshot(distInt, distBase, distHotSpot, overtimeBonus, landingShown, xpMultShown);
     }
 
     public void AddActionWhiffXp(int amount)
@@ -1570,7 +1631,9 @@ public class RunScoring2D : MonoBehaviour
         if (amount <= 0) return;
         if (!streakActive) return;
 
+        // Add bonus distance to both totals without Overtime multiplication
         travelDistance += amount;
+        travelDistanceWithoutOvertime += amount;
 
         BankDistance(amount);
         UpdateTotalsUI_LiveBanked();
@@ -1579,45 +1642,115 @@ public class RunScoring2D : MonoBehaviour
 
     void UpdateScoreText()
     {
-        if (!scoreText) return;
-
         bool ended = (!streakActive && resultLatched);
-        scoreText.color = ended ? scoreTextEndedColor : scoreTextLiveColor;
+        Color liveColor = scoreTextLiveColor;
+        Color endedColor = scoreTextEndedColor;
 
         if (!streakActive && !resultLatched)
         {
-            scoreText.text = "";
+            HideAllScoreElements();
             return;
         }
 
         RunSnapshot s = streakActive ? BuildLiveSnapshot() : latchedSnapshot;
-
-        bool showCatchLine = catchesThisRun > 0;
         bool showLandLine = ended ? !lastRunNoLanding : showLandingInfo;
 
-        string detailsText = $"{s.distInt}";
-        if (showCatchLine) detailsText += $"\n{CatchLineText(s.catchShown)}";
-        if (showLandLine) detailsText += $"\nland x{s.landingShown:0.00}";
-
-        if (s.xpPct != 0)
+        // Distance text (BASE distance) with optional bonuses inline in powerup order
+        if (distanceText)
         {
-            string xpLine = s.xpPct > 0 ? $"+{s.xpPct}% XP" : $"{s.xpPct}% XP";
-            detailsText += $"\n{xpLine}";
+            string distanceStr = $"{s.distBase}";
+
+            // Display bonuses in the order powerups were first used
+            if (firstPowerupUsed == 1)  // Overtime first
+            {
+                // Show Overtime then Hot Spot
+                if (s.overtimeBonus > 0)
+                {
+                    string bonusColor = ColorUtility.ToHtmlStringRGB(overtimeBonusColor);
+                    distanceStr += $" <color=#{bonusColor}>+ {s.overtimeBonus}</color>";
+                }
+                if (s.distHotSpot > 0)
+                {
+                    string hotColor = ColorUtility.ToHtmlStringRGB(hotSpotBonusColor);
+                    distanceStr += $" <color=#{hotColor}>+ {s.distHotSpot}</color>";
+                }
+            }
+            else  // Hot Spot first or neither used yet
+            {
+                // Show Hot Spot then Overtime
+                if (s.distHotSpot > 0)
+                {
+                    string hotColor = ColorUtility.ToHtmlStringRGB(hotSpotBonusColor);
+                    distanceStr += $" <color=#{hotColor}>+ {s.distHotSpot}</color>";
+                }
+                if (s.overtimeBonus > 0)
+                {
+                    string bonusColor = ColorUtility.ToHtmlStringRGB(overtimeBonusColor);
+                    distanceStr += $" <color=#{bonusColor}>+ {s.overtimeBonus}</color>";
+                }
+            }
+
+            distanceText.text = distanceStr;
+            distanceText.color = ended ? endedColor : liveColor;
+            distanceText.gameObject.SetActive(true);
         }
 
-        bool somethingBeyondDistance =
-            showCatchLine ||
-            (showLandLine && s.landingShown != 1f) ||
-            (s.xpPct != 0);
+        // Landing multiplier text
+        if (landMultText)
+        {
+            if (showLandLine)
+            {
+                landMultText.text = $"land x{s.landingShown:0.00}";
+                landMultText.color = ended ? endedColor : liveColor;
+                landMultText.gameObject.SetActive(true);
+            }
+            else
+            {
+                landMultText.gameObject.SetActive(false);
+            }
+        }
 
-        string fullText = detailsText;
+        // XP multiplier text
+        bool showXpMult = s.xpPct != 0;
+        if (xpMultText)
+        {
+            if (showXpMult)
+            {
+                string xpLine = s.xpPct > 0 ? $"+{s.xpPct}% XP" : $"{s.xpPct}% XP";
+                xpMultText.text = xpLine;
+                xpMultText.color = ended ? endedColor : liveColor;
+                xpMultText.gameObject.SetActive(true);
+            }
+            else
+            {
+                xpMultText.gameObject.SetActive(false);
+            }
+        }
 
-        if (somethingBeyondDistance)
-            fullText = $"{detailsText}\n\n<color={SCORE_VALUE_COLOR}>{s.xpTotal}</color>";
+        // Final score text
+        bool somethingBeyondDistance = showLandLine || (s.xpPct != 0);
+        if (finalScoreText)
+        {
+            if (somethingBeyondDistance)
+            {
+                finalScoreText.text = s.xpTotal.ToString();
+                Color finalColor = ended ? new Color(finalScoreColor.r, finalScoreColor.g, finalScoreColor.b, scoreTextEndedColor.a) : finalScoreColor;
+                finalScoreText.color = finalColor;
+                finalScoreText.gameObject.SetActive(true);
+            }
+            else
+            {
+                finalScoreText.gameObject.SetActive(false);
+            }
+        }
+    }
 
-        scoreText.text = ended
-            ? $"<color={DETAILS_DIM_COLOR}>{fullText}</color>"
-            : fullText;
+    void HideAllScoreElements()
+    {
+        if (distanceText) distanceText.gameObject.SetActive(false);
+        if (landMultText) landMultText.gameObject.SetActive(false);
+        if (xpMultText) xpMultText.gameObject.SetActive(false);
+        if (finalScoreText) finalScoreText.gameObject.SetActive(false);
     }
 
     void RefreshAllUI()
@@ -1629,8 +1762,28 @@ public class RunScoring2D : MonoBehaviour
             bestText.color = bestDefaultColor;
         }
 
-        if (scoreText) scoreText.text = "";
+        HideAllScoreElements();
+        if (overtimeComparisonText) overtimeComparisonText.text = "";
         UpdateTotalsUI();
+    }
+
+    void UpdateOvertimeComparisonUI()
+    {
+        if (!overtimeComparisonText) return;
+
+        if (powerups && powerups.OvertimeActiveThisRun && streakActive)
+        {
+            int withOvertime = RoundInt(travelDistance);
+            int withoutOvertime = RoundInt(travelDistanceWithoutOvertime);
+            int bonus = withOvertime - withoutOvertime;
+            float mult = powerups.GetOvertimeMultiplier();
+
+            overtimeComparisonText.text = $"WITHOUT OVERTIME: {withoutOvertime}\n(+{bonus} bonus, {mult:F2}x)";
+        }
+        else
+        {
+            overtimeComparisonText.text = "";
+        }
     }
 
     void UpdateTotalsUI()
@@ -1852,7 +2005,7 @@ public class RunScoring2D : MonoBehaviour
 
         stopTimer = 0f;
         travelDistance = 0f;
-        catchMultiplier = 1f;
+        travelDistanceWithoutOvertime = 0f;
         catchesThisRun = 0;
 
         throwsUsedThisRun = 0;
@@ -1871,7 +2024,13 @@ public class RunScoring2D : MonoBehaviour
         PauseLandingVfxIfAny();
         HideAll();
 
-        if (scoreText) scoreText.text = "";
+        HideAllScoreElements();
+        if (overtimeComparisonText) overtimeComparisonText.text = "";
+
+        savedOvertimeActive = false;
+        savedOvertimeUsed = false;
+        savedOvertimeElapsed = 0f;
+
         if (actions) actions.OnRunEnded();
     }
 

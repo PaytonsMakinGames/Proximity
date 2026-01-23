@@ -47,6 +47,10 @@ public class PowerupManager : MonoBehaviour
     bool overtimeActiveThisRun;
     bool overtimeUsedThisRun;
     float overtimeElapsed;  // Total time spent in-air across all throws this run while moving
+    // Saved overtime state for Encore revive window
+    bool overtimeSavedActive;
+    bool overtimeSavedUsed;
+    float overtimeSavedElapsed;
     bool encoreUsedThisRun;
     bool encoreReviveUsedThisRun;
 
@@ -57,6 +61,7 @@ public class PowerupManager : MonoBehaviour
     public bool HotSpotSpawnedThisRun => hotSpotSpawnedThisRun;
     public bool HotSpotJustSpawnedThisThrow => hotSpotJustSpawnedThisThrow;
     public bool OvertimeActiveThisRun => overtimeActiveThisRun;
+    public bool OvertimeUsedThisRun => overtimeUsedThisRun;
     public bool EncoreAnyUsedThisRun => encoreUsedThisRun || encoreReviveUsedThisRun;
 
     public event Action OnArmedChanged;
@@ -110,6 +115,12 @@ public class PowerupManager : MonoBehaviour
         hotSpotUsedThisRun = false;
         hotSpotSpawnedThisRun = false;
         hotSpotJustSpawnedThisThrow = false;
+
+        // Preserve overtime state in case an Encore revive happens immediately after run end
+        overtimeSavedActive = overtimeActiveThisRun;
+        overtimeSavedUsed = overtimeUsedThisRun;
+        overtimeSavedElapsed = overtimeElapsed;
+
         overtimeActiveThisRun = false;
         overtimeUsedThisRun = false;
         overtimeElapsed = 0f;
@@ -121,9 +132,11 @@ public class PowerupManager : MonoBehaviour
     {
         encoreUsedThisRun = false;
         encoreReviveUsedThisRun = false;
-        overtimeUsedThisRun = false;
-        overtimeActiveThisRun = false;
-        overtimeElapsed = 0f;
+        // DO NOT reset Overtime here; it should persist if already armed/active in previous throw
+
+        overtimeSavedActive = false;
+        overtimeSavedUsed = false;
+        overtimeSavedElapsed = 0f;
     }
 
     // Called by RunScoring2D when a new throw is released.
@@ -198,6 +211,14 @@ public class PowerupManager : MonoBehaviour
                     popups.PopAtWorldWithExtraOffset(ballWorldPos, "Encore!", encorePopupColor, new Vector2(0f, 0f));
                     popups.PopAtWorldWithExtraOffset(ballWorldPos, isEncoreRevive ? "Run Saved" : "+1 Throw", encorePopupColor, new Vector2(0f, -60f));
                 }
+
+                // If this was a revive, restore any saved overtime state so visuals/multiplier continue
+                if (isEncoreRevive && overtimeSavedUsed)
+                {
+                    overtimeActiveThisRun = overtimeSavedActive;
+                    overtimeUsedThisRun = overtimeSavedUsed;
+                    overtimeElapsed = overtimeSavedElapsed;
+                }
             }
         }
         // Overtime
@@ -211,8 +232,15 @@ public class PowerupManager : MonoBehaviour
 
             if (TryConsumeIfArmedMatches(PowerupTrigger.NextThrowRelease))
             {
+                // Start counting only from the moment Overtime is activated (not from run start)
+                overtimeElapsed = 0f;
                 overtimeActiveThisRun = true;
                 overtimeUsedThisRun = true;
+
+                // Clear any prior saved overtime snapshot; we're starting fresh
+                overtimeSavedActive = false;
+                overtimeSavedUsed = false;
+                overtimeSavedElapsed = 0f;
                 // Don't reset elapsed - accumulates across all throws in the run
                 if (popups)
                     popups.PopAtWorldWithExtraOffset(ballWorldPos, "Overtime!", overtimePopupColor, new Vector2(0f, 0f));
@@ -249,6 +277,18 @@ public class PowerupManager : MonoBehaviour
     public string GetStickyBallId() => stickyBallId;
     public string GetHotSpotId() => hotSpotId;
     public float GetOvertimeMaxBonus() => overtimeMaxMultiplier;
+
+    public (bool active, bool used, float elapsed) GetOvertimeSnapshot()
+    {
+        return (overtimeActiveThisRun, overtimeUsedThisRun, overtimeElapsed);
+    }
+
+    public void RestoreOvertimeSnapshot(bool active, bool used, float elapsed)
+    {
+        overtimeActiveThisRun = active;
+        overtimeUsedThisRun = used;
+        overtimeElapsed = elapsed;
+    }
 
     // Tick overtime timer only while ball is not held.
     public void TickOvertime(bool isHeld)
