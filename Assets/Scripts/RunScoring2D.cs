@@ -113,6 +113,11 @@ public class RunScoring2D : MonoBehaviour
     [SerializeField] XpManager xp;
     [SerializeField] PlayerInventory inventory;
 
+    [Header("Edge Case")]
+    [SerializeField, Min(0.1f)] float edgeCaseDistanceMultiplier = 3f;  // Multiplier on thrown distance before landing mult
+    [SerializeField, Min(0.01f)] float edgeCaseClosenessBaseline = 0.1f; // Minimum closeness factor at threshold
+    [SerializeField, Min(0.1f)] float edgeCaseClosenessExponent = 2.5f;  // Steepness toward the wall
+
     [Header("Powerups (v1)")]
     [SerializeField] PowerupManager powerups;
 
@@ -137,10 +142,13 @@ public class RunScoring2D : MonoBehaviour
     [SerializeField] Transform hotSpotMarker;   // circle sprite object
     [SerializeField] TextMeshPro hotSpotText;   // text centered in circle
 
+    // Colors
+    [SerializeField] Color hotSpotLiveColor = new Color(1f, 0.75f, 0.75f, 1f);
+    [SerializeField] Color hotSpotDimmedColor = new Color(1f, 0.75f, 0.75f, 0.35f);
+
     // Gameplay tuning
     [SerializeField, Min(0.05f)] float hotSpotRadiusStart = 0.9f;
 
-    [SerializeField, Min(0f)] float hotSpotMinHitSpeed = 0.75f;
     [SerializeField, Min(0f)] float hotSpotHitCooldown = 0.05f;
 
     // Runtime state
@@ -151,6 +159,15 @@ public class RunScoring2D : MonoBehaviour
     int hotSpotBonusDistanceThisRun;
     int hotSpotTotalPointsThisRun;
     float hotSpotLastHitTime;  // Prevent rapid multi-hits with cooldown
+    bool hotSpotEncoreRestored; // True if revived via Encore after run end
+
+    // Hot Spot snapshot for Encore revive
+    bool savedHotSpotActive;
+    Vector2 savedHotSpotCenter;
+    float savedHotSpotRadius;
+    int savedHotSpotBonusDistanceThisRun;
+    int savedHotSpotTotalPointsThisRun;
+    float savedHotSpotLastHitTime;
 
     [Header("Run Cancel")]
     [SerializeField] KeyCode cancelRunKey = KeyCode.X;
@@ -215,6 +232,7 @@ public class RunScoring2D : MonoBehaviour
     bool encoreUsedThisRun;
     bool encoreReviveUsedThisRun;
     bool EncoreAnyUsedThisRun => encoreUsedThisRun || encoreReviveUsedThisRun;
+    bool pendingEncoreBonusForNewRun;
 
     // After a run ends, we allow one revive window where XP and Best can adjust.
     bool pendingRunAdjustActive;
@@ -372,19 +390,59 @@ public class RunScoring2D : MonoBehaviour
             {
                 // Check for Encore revive (after a latched run, before a new streak starts)
                 bool isEncoreRevive = !streakActive && pendingRunAdjustActive && !powerups.EncoreAnyUsedThisRun;
+                bool runStartHandled = false;
 
                 // If NOT a revive and we're not in a run yet, start a brand-new run BEFORE processing powerups
                 if (!streakActive && !isEncoreRevive)
                 {
+                    // Clear any prior Hot Spot when a brand-new run begins; keep it visible between runs
+                    ClearHotSpotAll();
+                    // Also clear the saved snapshot so it can't interfere with the new hot spot
+                    savedHotSpotActive = false;
+                    savedHotSpotCenter = Vector2.zero;
+                    savedHotSpotRadius = 0f;
+                    savedHotSpotBonusDistanceThisRun = 0;
+                    savedHotSpotTotalPointsThisRun = 0;
+                    savedHotSpotLastHitTime = -9999f;
+
+                    if (powerups) powerups.DisableHotSpot();
+
                     if (powerups) powerups.OnRunStarted();
                     // Do NOT reset Overtime here; let it persist across multiple throws in logical sequence
                     if (actions) actions.OnRunStarted();
+
+                    runStartHandled = true;
                 }
 
                 // Detect Encore consumption on THIS throw
                 bool encoreWasUsed = powerups.EncoreAnyUsedThisRun;
                 powerups.OnThrowReleased((Vector2)ballRb.position, isEncoreRevive);
                 bool encoreJustUsed = !encoreWasUsed && powerups.EncoreAnyUsedThisRun;
+
+                // If this throw was in the revive window but Encore wasn't consumed, start a normal run now
+                if (isEncoreRevive && !encoreJustUsed && !runStartHandled)
+                {
+                    ClearHotSpotAll();
+                    savedHotSpotActive = false;
+                    savedHotSpotCenter = Vector2.zero;
+                    savedHotSpotRadius = 0f;
+                    savedHotSpotBonusDistanceThisRun = 0;
+                    savedHotSpotTotalPointsThisRun = 0;
+                    savedHotSpotLastHitTime = -9999f;
+
+                    if (powerups)
+                    {
+                        powerups.OnRunStarted();
+                    }
+                    if (actions) actions.OnRunStarted();
+
+                    runStartHandled = true;
+                    isEncoreRevive = false;
+                }
+
+                // If Encore was used on the very first throw of a brand-new run, grant its bonus after StartStreak runs.
+                if (encoreJustUsed && !isEncoreRevive && !streakActive)
+                    pendingEncoreBonusForNewRun = true;
 
                 // Mark Overtime as first powerup if it was just activated and not already set
                 if (powerups.OvertimeUsedThisRun && firstPowerupUsed == 0)
@@ -407,6 +465,13 @@ public class RunScoring2D : MonoBehaviour
                         {
                             powerups.RestoreOvertimeSnapshot(savedOvertimeActive, savedOvertimeUsed, savedOvertimeElapsed);
                         }
+
+                        // Restore Hot Spot state/visuals for Encore revive (un-dim)
+                        RestoreHotSpotSnapshotIfEncore();
+                        if (HotSpotActive())
+                            HotSpot_UpdateVisuals(true);
+                        hotSpotInside = IsBallOverlappingHotSpot(ballRb.position);
+                        hotSpotLastPos = ballRb.position;
 
                         UpdateOvertimeComparisonUI();
                     }
@@ -434,21 +499,12 @@ public class RunScoring2D : MonoBehaviour
                     hotSpotLastPos = ballRb.position;
                     hotSpotBonusDistanceThisRun = 0;
                     hotSpotTotalPointsThisRun = 0;  // Reset points for this hot spot instance
+                    hotSpotLastHitTime = -9999f;  // Reset hit timer so first hit counts immediately
                     HotSpot_SetVisualsActive(true);
-                    HotSpot_UpdateVisuals();
+                    HotSpot_UpdateVisuals(true);  // Force live color on spawn
                     hotSpotInside = IsBallOverlappingHotSpot(ballRb.position);
-
-                    // Popup positioned outside hot spot, toward screen center
-                    if (popups)
-                    {
-                        WorldBounds b = ComputeBounds();
-                        Vector2 screenCenter = new Vector2(b.centerX, b.centerY);
-                        Vector2 dirToCenter = (screenCenter - hotSpotCenter).normalized;
-                        Vector2 popupOffset = dirToCenter * (hotSpotRadius + 0.5f);
-                        popups.PopAtWorldWithExtraOffset(hotSpotCenter, "Hot Spot!", new Color(1f, 0.75f, 0.75f, 1f), popupOffset);
-                    }
                 }
-                else if (powerups.HotSpotSpawnedThisRun && ballRb)
+                else if (HotSpotActive() && ballRb)
                 {
                     // Keep visual active but don't reposition - it stays where it spawned
                     HotSpot_SetVisualsActive(true);
@@ -458,6 +514,15 @@ public class RunScoring2D : MonoBehaviour
             }
 
             OnThrown();
+
+            // Apply pending Encore bonus after StartStreak has reset run state
+            if (pendingEncoreBonusForNewRun)
+            {
+                bonusThrowsThisRun += 1;
+                throwsExhausted = false;
+                UpdateThrowsUi();
+                pendingEncoreBonusForNewRun = false;
+            }
             ConsumeThrow(fromMiss: false);
 
             if (grab) grab.ConsumeWasThrown();
@@ -773,6 +838,11 @@ public class RunScoring2D : MonoBehaviour
 
     // ---------------- Hot Spot ----------------
 
+    bool HotSpotActive()
+    {
+        return (powerups && powerups.HotSpotSpawnedThisRun) || hotSpotEncoreRestored;
+    }
+
     void HotSpot_SetVisualsActive(bool on)
     {
         if (hotSpotMarker) hotSpotMarker.gameObject.SetActive(on);
@@ -780,6 +850,11 @@ public class RunScoring2D : MonoBehaviour
     }
 
     void HotSpot_UpdateVisuals()
+    {
+        HotSpot_UpdateVisuals(streakActive);
+    }
+
+    void HotSpot_UpdateVisuals(bool useLiveColor)
     {
         if (hotSpotMarker)
         {
@@ -789,7 +864,7 @@ public class RunScoring2D : MonoBehaviour
             hotSpotMarker.localScale = new Vector3(d, d, 1f);
 
             var sr = hotSpotMarker.GetComponent<SpriteRenderer>();
-            if (sr) sr.color = new Color(1f, 0.75f, 0.75f, 1f);
+            if (sr) sr.color = useLiveColor ? hotSpotLiveColor : hotSpotDimmedColor;
         }
 
         if (hotSpotText)
@@ -806,14 +881,55 @@ public class RunScoring2D : MonoBehaviour
         hotSpotBonusDistanceThisRun = 0;
         hotSpotTotalPointsThisRun = 0;
         hotSpotLastHitTime = -9999f;
+        hotSpotEncoreRestored = false;
+
+        savedHotSpotActive = false;
+        savedHotSpotCenter = Vector2.zero;
+        savedHotSpotRadius = 0f;
+        savedHotSpotBonusDistanceThisRun = 0;
+        savedHotSpotTotalPointsThisRun = 0;
+        savedHotSpotLastHitTime = -9999f;
 
         HotSpot_SetVisualsActive(false);
+    }
+
+    void SaveHotSpotSnapshotForEncore()
+    {
+        if (!HotSpotActive())
+        {
+            savedHotSpotActive = false;
+            return;
+        }
+
+        savedHotSpotActive = true;
+        savedHotSpotCenter = hotSpotCenter;
+        savedHotSpotRadius = hotSpotRadius;
+        savedHotSpotBonusDistanceThisRun = hotSpotBonusDistanceThisRun;
+        savedHotSpotTotalPointsThisRun = hotSpotTotalPointsThisRun;
+        savedHotSpotLastHitTime = hotSpotLastHitTime;
+    }
+
+    void RestoreHotSpotSnapshotIfEncore()
+    {
+        if (!savedHotSpotActive) return;
+
+        hotSpotCenter = savedHotSpotCenter;
+        hotSpotRadius = savedHotSpotRadius;
+        hotSpotBonusDistanceThisRun = savedHotSpotBonusDistanceThisRun;
+        hotSpotTotalPointsThisRun = savedHotSpotTotalPointsThisRun;
+        hotSpotLastHitTime = savedHotSpotLastHitTime;
+        hotSpotEncoreRestored = true;
+
+        savedHotSpotActive = false;
+
+        HotSpot_SetVisualsActive(true);
+        HotSpot_UpdateVisuals(true);  // Explicitly brighten on Encore restore
     }
 
     // Overlap test: ball circle vs hot spot circle
     bool IsBallOverlappingHotSpot(Vector2 ballCenter)
     {
-        if (!powerups || !powerups.HotSpotSpawnedThisRun) return false;
+        if (!HotSpotActive()) return false;
 
         WorldBounds b = ComputeBounds();
         float ballR = b.r;
@@ -822,32 +938,49 @@ public class RunScoring2D : MonoBehaviour
         return (ballCenter - hotSpotCenter).sqrMagnitude <= (rSum * rSum);
     }
 
-    // Swept test: does segment from a->b intersect hot spot circle (expanded by ball radius)?
+    // Swept test: use Physics2D to detect if ball passed through hot spot region
     bool DidSweepHitHotSpot(Vector2 a, Vector2 b)
     {
-        if (!powerups || !powerups.HotSpotSpawnedThisRun) return false;
+        if (!HotSpotActive()) return false;
+        if (!ballRb) return false;
 
         WorldBounds w = ComputeBounds();
         float ballR = w.r;
-        float r = hotSpotRadius + ballR;
-        Vector2 center = hotSpotCenter;
+        float castRadius = hotSpotRadius + ballR;
+        Vector2 direction = b - a;
+        float distance = direction.magnitude;
 
-        Vector2 ab = b - a;
-        Vector2 ac = center - a;
-        float abLenSq = ab.sqrMagnitude;
-        if (abLenSq <= 0.000001f)
-            return ac.sqrMagnitude <= r * r;
+        // If barely moving, no sweep hit
+        if (distance < 0.0001f) return false;
 
-        float t = Mathf.Clamp01(Vector2.Dot(ac, ab) / abLenSq);
-        Vector2 closest = a + ab * t;
-        return (closest - center).sqrMagnitude <= r * r;
+        // Use CircleCast to detect if the ball path intersects the hot spot region
+        RaycastHit2D hit = Physics2D.CircleCast(
+            a,
+            ballR,
+            direction.normalized,
+            distance,
+            LayerMask.GetMask("Default")
+        );
+
+        // If no physics hit, fall back to manual closest-point test
+        if (!hit.collider)
+        {
+            Vector2 center = hotSpotCenter;
+            Vector2 ac = center - a;
+            float abLenSq = direction.sqrMagnitude;
+            float t = Mathf.Clamp01(Vector2.Dot(ac, direction) / abLenSq);
+            Vector2 closest = a + direction * t;
+            return (closest - center).sqrMagnitude <= (castRadius * castRadius);
+        }
+
+        return true;
     }
 
     // Call every frame to detect outside->inside entry hits
     void UpdateHotSpotHitState(bool isHeld)
     {
         if (!streakActive) return;
-        if (!powerups || !powerups.HotSpotSpawnedThisRun) return;
+        if (!HotSpotActive()) return;
         if (!ballRb) return;
 
         // Don’t count while held, but keep state synced
@@ -875,49 +1008,51 @@ public class RunScoring2D : MonoBehaviour
                 return;  // Cooldown active, ignore this hit
             }
 
-            float speed = ballRb.linearVelocity.magnitude;
-            if (speed >= hotSpotMinHitSpeed)
+            // Record hit time and award points (no speed limit)
+            hotSpotLastHitTime = Time.time;
+            int bonus = powerups ? powerups.GetHotSpotDistancePerHit() : 50;
+
+            // Cap at 1000 total points
+            int remainingCapacity = 1000 - hotSpotTotalPointsThisRun;
+            if (remainingCapacity <= 0)
             {
-                hotSpotLastHitTime = Time.time;  // Record hit time
-                int bonus = powerups ? powerups.GetHotSpotDistancePerHit() : 50;
+                // Hot spot is exhausted, disable it
+                if (powerups) powerups.DisableHotSpot();
+                HotSpot_SetVisualsActive(false);
+                hotSpotEncoreRestored = false;
+                savedHotSpotActive = false;
+                hotSpotInside = insideNow;
+                return;
+            }
 
-                // Cap at 1000 total points
-                int remainingCapacity = 1000 - hotSpotTotalPointsThisRun;
-                if (remainingCapacity <= 0)
-                {
-                    // Hot spot is exhausted, disable it
-                    if (powerups) powerups.DisableHotSpot();
-                    HotSpot_SetVisualsActive(false);
-                    hotSpotInside = insideNow;
-                    return;
-                }
+            // Award only up to the cap
+            bonus = Mathf.Min(bonus, remainingCapacity);
+            // Hot Spot adds as a separate flat bonus (not to base, to avoid interfering with overtime bonus calc)
+            hotSpotBonusDistance += bonus;
+            hotSpotBonusDistanceThisRun += bonus;
+            hotSpotTotalPointsThisRun += bonus;
+            BankDistance(bonus);
+            UpdateTotalsUI_LiveBanked();
+            SaveTotalsIfDirty(false);
 
-                // Award only up to the cap
-                bonus = Mathf.Min(bonus, remainingCapacity);
-                // Hot Spot adds as a separate flat bonus (not to base, to avoid interfering with overtime bonus calc)
-                hotSpotBonusDistance += bonus;
-                hotSpotBonusDistanceThisRun += bonus;
-                hotSpotTotalPointsThisRun += bonus;
-                BankDistance(bonus);
-                UpdateTotalsUI_LiveBanked();
-                SaveTotalsIfDirty(false);
+            // Linear shrink: 20 increments from start size to 0
+            hotSpotRadius = Mathf.Max(0f, hotSpotRadius - (hotSpotRadiusStart / 20f));
 
-                // Linear shrink: 20 increments from start size to 0
-                hotSpotRadius = Mathf.Max(0f, hotSpotRadius - (hotSpotRadiusStart / 20f));
-
-                // Disappear when radius is gone
-                if (hotSpotRadius <= 0f)
-                {
-                    HotSpot_SetVisualsActive(false);
-                    if (powerups) powerups.DisableHotSpot();
-                }
-                else
-                {
-                    HotSpot_UpdateVisuals();
-                }
+            // Disappear when radius is gone
+            if (hotSpotRadius <= 0f)
+            {
+                HotSpot_SetVisualsActive(false);
+                if (powerups) powerups.DisableHotSpot();
+                hotSpotEncoreRestored = false;
+                savedHotSpotActive = false;
+            }
+            else
+            {
+                HotSpot_UpdateVisuals(streakActive);
             }
         }
 
+        // Update hotSpotInside: set to true if inside now, false if exited entirely
         hotSpotInside = insideNow;
         hotSpotLastPos = posNow;
     }
@@ -975,7 +1110,7 @@ public class RunScoring2D : MonoBehaviour
 
         landingAllowedThisSegment = true;
 
-        if (powerups && powerups.HotSpotSpawnedThisRun && ballRb)
+        if (HotSpotActive() && ballRb)
             hotSpotInside = IsBallOverlappingHotSpot(ballRb.position);
     }
 
@@ -1205,12 +1340,19 @@ public class RunScoring2D : MonoBehaviour
     {
         if (!streakActive) return;
         ClearStickyIfAny();
-        ClearHotSpotAll();
+
+        // Dim hot spot BEFORE clearing powerup state and keep it visible
+        if (HotSpotActive())
+        {
+            HotSpot_SetVisualsActive(true);  // Ensure marker stays active
+            HotSpot_UpdateVisuals(false);    // Dim it
+        }
 
         streakActive = false;
         if (powerups)
         {
             (savedOvertimeActive, savedOvertimeUsed, savedOvertimeElapsed) = powerups.GetOvertimeSnapshot();
+            SaveHotSpotSnapshotForEncore();
             powerups.OnRunEnded();
         }
         lastRunNoLanding = true;
@@ -1250,10 +1392,24 @@ public class RunScoring2D : MonoBehaviour
         if (!streakActive) return;
         ClearStickyIfAny();
 
+        // Consume pending insurance if the ball stopped (insurance protected the landing)
+        if (powerups)
+        {
+            powerups.ConsumePendingInsuranceIfAny();
+        }
+
+        // Dim hot spot BEFORE clearing powerup state and keep it visible
+        if (HotSpotActive())
+        {
+            HotSpot_SetVisualsActive(true);  // Ensure marker stays active
+            HotSpot_UpdateVisuals(false);    // Dim it
+        }
+
         streakActive = false;
         if (powerups)
         {
             (savedOvertimeActive, savedOvertimeUsed, savedOvertimeElapsed) = powerups.GetOvertimeSnapshot();
+            SaveHotSpotSnapshotForEncore();
             powerups.OnRunEnded();
         }
         BankRemainingDistance();
@@ -1305,7 +1461,6 @@ public class RunScoring2D : MonoBehaviour
         }
 
         if (actions) actions.OnRunEnded();
-        ClearHotSpotAll();
 
         if (overtimeComparisonText) overtimeComparisonText.text = "";
     }
@@ -1362,7 +1517,7 @@ public class RunScoring2D : MonoBehaviour
         if (perpDeviation > laneHalfWidth) laneBroken = true;
     }
 
-    bool ShouldCapRightNow() => !laneBroken && !disableLaneCapThisSegment;
+    bool ShouldCapRightNow() => false;  // Lane cap disabled
 
     float ComputeLandingMultiplier(bool capped)
     {
@@ -1414,6 +1569,28 @@ public class RunScoring2D : MonoBehaviour
         }
 
         return m;
+    }
+
+    // Award Edge Case: add weighted distance directly as XP (bypasses run scoring).
+    // closeness01: 0..1 where 1 is essentially on the wall; weighted with exponent and baseline.
+    // Returns the rounded value for popup/feedback.
+    public int AwardEdgeCaseDistanceLikeNormal(float throwDistance, Vector2 landingWorldPos, float closeness01)
+    {
+        float m = GetLandingMultiplierAt(landingWorldPos);
+
+        float scaled = throwDistance * Mathf.Max(0.0001f, distanceUnitScale) * Mathf.Max(0.1f, edgeCaseDistanceMultiplier);
+
+        // Closeness weighting: floor at baseline, curve toward 1 with exponent to heavily reward tighter shots.
+        float c = Mathf.Clamp01(closeness01);
+        float closenessBoost = Mathf.Pow(c, Mathf.Max(0.1f, edgeCaseClosenessExponent));
+        float closenessFactor = Mathf.Max(edgeCaseClosenessBaseline, closenessBoost);
+
+        float add = Mathf.Max(0f, scaled * closenessFactor * m);
+
+        int xpToAdd = RoundInt(add);
+        if (xp) xp.AddXp(xpToAdd);
+
+        return xpToAdd;
     }
 
     void UpdatePlacementVisualsAndMultiplier(bool isHeld, bool uiTick)
@@ -1998,10 +2175,11 @@ public class RunScoring2D : MonoBehaviour
     {
         streakActive = false;
         if (powerups) powerups.OnRunEnded();
+        ClearHotSpotAll();
+        if (powerups) powerups.DisableHotSpot();
         resultLatched = false;
         lastRunNoLanding = false;
         ClearStickyIfAny();
-        ClearHotSpotAll();
 
         stopTimer = 0f;
         travelDistance = 0f;

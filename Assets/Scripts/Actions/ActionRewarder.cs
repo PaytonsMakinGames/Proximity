@@ -25,11 +25,17 @@ public class ActionRewarder : MonoBehaviour
     [SerializeField] DropEntry[] dropsQuickCatch;
     [SerializeField] DropEntry[] dropsGreed;
     [SerializeField] DropEntry[] dropsDesperation;
+    [SerializeField] DropEntry[] dropsEdgeCase;
+
+    [Header("Reward Colors")]
+    [SerializeField] Color rewardXpColor = new Color32(143, 179, 200, 255);      // XP/distance bonus
+    [SerializeField] Color rewardItemColor = new Color32(124, 255, 178, 255);    // Item drop
 
     static readonly Color COLOR_WALLFRENZY = new Color32(255, 140, 60, 255);
     static readonly Color COLOR_QUICKCATCH = new Color32(90, 220, 255, 255);
     static readonly Color COLOR_GREED = new Color32(255, 200, 90, 255);
     static readonly Color COLOR_DESPERATION = new Color32(180, 140, 255, 255);
+    static readonly Color COLOR_EDGECASE = new Color32(150, 200, 255, 255);
     static readonly Color COLOR_ITEM = new Color32(124, 255, 178, 255);
     static readonly Color COLOR_XP = new Color32(143, 179, 200, 255);
 
@@ -54,6 +60,7 @@ public class ActionRewarder : MonoBehaviour
             case "QuickCatch": table = dropsQuickCatch; break;
             case "Greed": table = dropsGreed; break;
             case "Desperation": table = dropsDesperation; break;
+            case "EdgeCase": table = dropsEdgeCase; break;
         }
 
         if (table == null || table.Length == 0) return;
@@ -70,8 +77,9 @@ public class ActionRewarder : MonoBehaviour
             if (popups)
             {
                 string actionName = GetActionDisplayName(actionId);
-                popups.PopAtWorldWithExtraOffset(where, $"{actionName}!", actionColor, Vector2.zero);
-                popups.PopAtWorldWithExtraOffset(where, $"+50", COLOR_XP, new Vector2(0f, -60f));
+                string actionHex = GetActionColorHex(actionId);
+                string xpHex = ColorToHex(rewardXpColor);
+                popups.PopAtWorld(where, $"<color=#{actionHex}>{actionName}</color>\n<color=#{xpHex}>+50</color>", Color.white);
             }
             return;
         }
@@ -89,8 +97,51 @@ public class ActionRewarder : MonoBehaviour
         if (popups)
         {
             string actionName = GetActionDisplayName(actionId);
-            popups.PopAtWorldWithExtraOffset(where, $"{actionName}!", actionColor, Vector2.zero);
-            popups.PopAtWorldWithExtraOffset(where, $"+1 {prettyName}", COLOR_ITEM, new Vector2(0f, -60f));
+            string actionHex = GetActionColorHex(actionId);
+            string itemHex = ColorToHex(rewardItemColor);
+            popups.PopAtWorld(where, $"<color=#{actionHex}>{actionName}</color>\n<color=#{itemHex}>+1 {prettyName}</color>", Color.white);
+        }
+    }
+
+    public void AwardEdgeCase(float throwDistance, float closeness01)
+    {
+        if (!inventory) return;
+
+        DropEntry[] table = dropsEdgeCase;
+        if (table == null || table.Length == 0) return;
+
+        string id = Roll(table);
+        Vector2 where = ballRb ? ballRb.position : Vector2.zero;
+        int distanceBonus = scoring ? scoring.AwardEdgeCaseDistanceLikeNormal(throwDistance, where, closeness01) : Mathf.RoundToInt(throwDistance);
+
+        string actionHex = "96C8FF";  // Edge Case color
+        string xpHex = ColorToHex(rewardXpColor);
+        string itemHex = ColorToHex(rewardItemColor);
+
+        if (string.IsNullOrEmpty(id))
+        {
+            // No drop - just distance bonus (single popup with newline)
+            if (popups)
+            {
+                popups.PopAtWorld(where, $"<color=#{actionHex}>Edge Case!</color>\n<color=#{xpHex}>+{distanceBonus}d</color>", Color.white);
+            }
+            return;
+        }
+
+        // Got a drop (single popup with both lines)
+        inventory.Add(id, 1);
+
+        string prettyName = id;
+        if (db)
+        {
+            var def = db.Get(id);
+            if (def != null && !string.IsNullOrEmpty(def.displayName))
+                prettyName = def.displayName;
+        }
+
+        if (popups)
+        {
+            popups.PopAtWorld(where, $"<color=#{actionHex}>Edge Case!</color>\n<color=#{itemHex}>+1 {prettyName}</color>\n<color=#{xpHex}>+{distanceBonus}d</color>", Color.white);
         }
     }
 
@@ -125,6 +176,7 @@ public class ActionRewarder : MonoBehaviour
             case "QuickCatch": return COLOR_QUICKCATCH;
             case "Greed": return COLOR_GREED;
             case "Desperation": return COLOR_DESPERATION;
+            case "EdgeCase": return COLOR_EDGECASE;
             default: return COLOR_ITEM;
         }
     }
@@ -137,7 +189,27 @@ public class ActionRewarder : MonoBehaviour
             case "QuickCatch": return "Quick Catch!";
             case "Greed": return "Greed!";
             case "Desperation": return "Desperation!";
+            case "EdgeCase": return "Edge Case!";
             default: return "Action?";
         }
+    }
+
+    string GetActionColorHex(string actionId)
+    {
+        switch (actionId)
+        {
+            case "WallFrenzy": return "FF8C3C";
+            case "QuickCatch": return "5ADCFF";
+            case "Greed": return "FFC85A";
+            case "Desperation": return "B48CFF";
+            case "EdgeCase": return "96C8FF";
+            default: return "FFFFFF";
+        }
+    }
+
+    string ColorToHex(Color color)
+    {
+        Color32 c = color;
+        return c.r.ToString("X2") + c.g.ToString("X2") + c.b.ToString("X2");
     }
 }

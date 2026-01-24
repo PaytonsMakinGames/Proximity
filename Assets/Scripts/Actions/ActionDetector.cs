@@ -23,6 +23,9 @@ public class ActionDetector : MonoBehaviour
     [Header("Greed / Desperation")]
     [SerializeField, Min(0f)] float preLandingDecisionWindowSeconds = 0.6f;
 
+    [Header("Edge Case")]
+    [SerializeField, Min(0f)] float edgeCaseProximityThreshold = 0.05f;  // Distance from wall as % of screen dimension
+
     [Header("Predicted Stop Marker")]
     [SerializeField] Transform predictedStopMarker;
     [SerializeField, Range(0.1f, 0.5f)] float stopMarkerSmoothSpeed = 0.25f;
@@ -38,7 +41,15 @@ public class ActionDetector : MonoBehaviour
 
     float throwDistance;
     Vector2 lastPos;
+    Vector2 throwStartPos;
     bool markerJustTeleported;
+
+    // Edge Case tracking
+    int closestWallThisThrow = -1;  // -1 = none, 0 = left, 1 = right, 2 = top, 3 = bottom
+    bool edgeCaseAwardedThisThrow;
+    int edgeCaseWallTouches;  // Allow 1 wall touch
+    float edgeCaseCloseness01;      // 0..1 closeness to top threshold (1 = on the edge)
+    bool edgeCaseQualified;         // true once proximity condition met this throw
 
     void Awake()
     {
@@ -56,11 +67,15 @@ public class ActionDetector : MonoBehaviour
             if (rb != null)
             {
                 Vector2 p = rb.position;
-                throwDistance += Vector2.Distance(p, lastPos);
+                throwDistance += Mathf.Abs(p.y - lastPos.y);  // Y-axis only to prevent horizontal cheesing
                 lastPos = p;
 
                 // Update predicted stop marker
                 UpdatePredictedStopMarker(rb);
+
+                // Check Edge Case proximity
+                CheckEdgeCaseProximity(rb);
+
             }
         }
     }
@@ -88,6 +103,35 @@ public class ActionDetector : MonoBehaviour
         }
     }
 
+    void CheckEdgeCaseProximity(Rigidbody2D rb)
+    {
+        if (!scoring) return;
+        if (edgeCaseAwardedThisThrow) return;
+        if (edgeCaseWallTouches > 1) return;  // Allow 1 wall touch
+
+        GameViewport.GetWorldBounds(out var min, out var max);
+        Vector2 p = rb.position;
+        float ballR = 0.5f;  // Approximate ball radius
+
+        // Calculate screen dimensions
+        float screenHeight = max.y - min.y;
+
+        // Only track TOP wall (wallId == 2)
+        float distToTop = (max.y - ballR) - p.y;
+        float distToTopPct = distToTop / screenHeight;
+
+        // If not close enough to top or touching, do nothing
+        if (distToTopPct <= 0f || distToTopPct > edgeCaseProximityThreshold) return;
+
+        // Qualified: track proximity and distance
+        closestWallThisThrow = 2;  // Top wall
+
+        // Calculate closeness multiplier (0-1, where 1 = at threshold edge)
+        float closenessMultiplier = Mathf.Clamp01(1f - (distToTopPct / edgeCaseProximityThreshold));
+        edgeCaseCloseness01 = closenessMultiplier;
+        edgeCaseQualified = true;
+    }
+
     void OnEnable()
     {
         if (grab) grab.OnDragEnded += OnThrowReleased;
@@ -106,6 +150,12 @@ public class ActionDetector : MonoBehaviour
         wallFrenzyAwardedThisThrow = false;
         leftHits = rightHits = topHits = bottomHits = 0;
         throwDistance = 0f;
+
+        closestWallThisThrow = -1;
+        edgeCaseAwardedThisThrow = false;
+        edgeCaseWallTouches = 0;
+        edgeCaseQualified = false;
+        edgeCaseCloseness01 = 0f;
     }
 
     public void OnRunEnded()
@@ -114,6 +164,18 @@ public class ActionDetector : MonoBehaviour
         throwInFlight = false;
         greedDoneThisRun = false;
         desperationDoneThisRun = false;
+
+        // Award Edge Case at run end to align with score dimming
+        if (!edgeCaseAwardedThisThrow && edgeCaseQualified && closestWallThisThrow != -1 && edgeCaseWallTouches <= 1 && edgeCaseCloseness01 > 0f)
+        {
+            edgeCaseAwardedThisThrow = true;
+            if (rewarder) rewarder.AwardEdgeCase(throwDistance, edgeCaseCloseness01);
+        }
+
+        edgeCaseQualified = false;
+        edgeCaseCloseness01 = 0f;
+        closestWallThisThrow = -1;
+        edgeCaseWallTouches = 0;
 
         if (predictedStopMarker && predictedStopMarker.gameObject.activeSelf)
             predictedStopMarker.gameObject.SetActive(false);
@@ -140,13 +202,24 @@ public class ActionDetector : MonoBehaviour
         leftHits = rightHits = topHits = bottomHits = 0;
         throwDistance = 0f;
         markerJustTeleported = false;
+        edgeCaseQualified = false;
+        edgeCaseCloseness01 = 0f;
+        closestWallThisThrow = -1;
+        edgeCaseWallTouches = 0;
 
-        if (grab) lastPos = grab.GetComponent<Rigidbody2D>().position;
+        if (grab)
+        {
+            throwStartPos = grab.GetComponent<Rigidbody2D>().position;
+            lastPos = throwStartPos;
+        }
     }
 
     public void OnWallBounce(int wallId)
     {
         if (!throwInFlight) return;
+
+        // Edge Case allows 1 wall touch
+        edgeCaseWallTouches++;
 
         wallBouncesThisThrow++;
 
