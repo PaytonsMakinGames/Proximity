@@ -189,6 +189,7 @@ public class RunScoring2D : MonoBehaviour
     }
 
     public float BestScore { get; private set; }
+    public float StopSpeed => stopSpeed;
     public int ThrowsLeft => Mathf.Max(0, EffectiveThrowsPerRun - throwsUsedThisRun);
     public bool ThrowsExhausted => EffectiveThrowsPerRun > 0 && throwsExhausted;
     public bool RunActive => streakActive;
@@ -213,6 +214,7 @@ public class RunScoring2D : MonoBehaviour
     bool savedOvertimeActive;
     bool savedOvertimeUsed;
     float savedOvertimeElapsed;
+    int savedFirstPowerupUsed;  // Preserve powerup order across Encore revive
 
     int overtimeBonusDisplayed;  // Only increases, never decreases
     int firstPowerupUsed;  // 0 = none, 1 = overtime, 2 = hot spot (used to reorder UI)
@@ -327,6 +329,10 @@ public class RunScoring2D : MonoBehaviour
         HideAll();
         RefreshAllUI();
         UpdateThrowsUi();
+
+        // Initialize powerup order tracking
+        firstPowerupUsed = 0;
+        resultLatched = false;
     }
 
     void OnEnable()
@@ -395,7 +401,10 @@ public class RunScoring2D : MonoBehaviour
                 // If NOT a revive and we're not in a run yet, start a brand-new run BEFORE processing powerups
                 if (!streakActive && !isEncoreRevive)
                 {
-                    // Clear any prior Hot Spot when a brand-new run begins; keep it visible between runs
+                    // Reset powerup detection order for this new run
+                    firstPowerupUsed = 0;
+                    savedFirstPowerupUsed = 0;
+
                     ClearHotSpotAll();
                     // Also clear the saved snapshot so it can't interfere with the new hot spot
                     savedHotSpotActive = false;
@@ -444,9 +453,45 @@ public class RunScoring2D : MonoBehaviour
                 if (encoreJustUsed && !isEncoreRevive && !streakActive)
                     pendingEncoreBonusForNewRun = true;
 
-                // Mark Overtime as first powerup if it was just activated and not already set
-                if (powerups.OvertimeUsedThisRun && firstPowerupUsed == 0)
-                    firstPowerupUsed = 1;  // 1 = Overtime
+                // Determine which powerup activated FIRST in the run (only set once)
+                if (firstPowerupUsed == 0)
+                {
+                    // If Hot Spot just spawned, check if Overtime was already active
+                    if (powerups.HotSpotJustSpawnedThisThrow && ballRb)
+                    {
+                        if (powerups.OvertimeUsedThisRun)
+                            firstPowerupUsed = 1;  // Overtime was already active, so it's first
+                        else
+                            firstPowerupUsed = 2;  // Hot Spot is first to activate
+                    }
+                    else if (powerups.OvertimeUsedThisRun)
+                    {
+                        // Overtime is active and Hot Spot didn't just spawn now, so Overtime is first
+                        firstPowerupUsed = 1;
+                    }
+                }
+
+                // Handle Hot Spot initialization (only on first throw when spawned)
+                if (powerups.HotSpotJustSpawnedThisThrow && ballRb)
+                {
+                    hotSpotCenter = ballRb.position;
+                    hotSpotRadius = hotSpotRadiusStart;
+                    hotSpotInside = false;
+                    hotSpotLastPos = ballRb.position;
+                    hotSpotBonusDistanceThisRun = 0;
+                    hotSpotTotalPointsThisRun = 0;  // Reset points for this hot spot instance
+                    hotSpotLastHitTime = -9999f;  // Reset hit timer so first hit counts immediately
+                    HotSpot_SetVisualsActive(true);
+                    HotSpot_UpdateVisuals(true);  // Force live color on spawn
+                    hotSpotInside = IsBallOverlappingHotSpot(ballRb.position);
+                }
+                else if (HotSpotActive() && ballRb)
+                {
+                    // Keep visual active but don't reposition - it stays where it spawned
+                    HotSpot_SetVisualsActive(true);
+                    hotSpotInside = IsBallOverlappingHotSpot(ballRb.position);
+                    hotSpotLastPos = ballRb.position;
+                }
 
                 if (encoreJustUsed)
                 {
@@ -465,6 +510,9 @@ public class RunScoring2D : MonoBehaviour
                         {
                             powerups.RestoreOvertimeSnapshot(savedOvertimeActive, savedOvertimeUsed, savedOvertimeElapsed);
                         }
+
+                        // Restore powerup order for this revived run
+                        firstPowerupUsed = savedFirstPowerupUsed;
 
                         // Restore Hot Spot state/visuals for Encore revive (un-dim)
                         RestoreHotSpotSnapshotIfEncore();
@@ -485,32 +533,6 @@ public class RunScoring2D : MonoBehaviour
                 }
 
                 // If this was a revive, we already kept the previous run active above.
-
-                // Handle Hot Spot initialization (only on first throw when spawned)
-                if (powerups.HotSpotJustSpawnedThisThrow && ballRb)
-                {
-                    // Mark Hot Spot as first powerup if not already set
-                    if (firstPowerupUsed == 0)
-                        firstPowerupUsed = 2;  // 2 = Hot Spot
-
-                    hotSpotCenter = ballRb.position;
-                    hotSpotRadius = hotSpotRadiusStart;
-                    hotSpotInside = false;
-                    hotSpotLastPos = ballRb.position;
-                    hotSpotBonusDistanceThisRun = 0;
-                    hotSpotTotalPointsThisRun = 0;  // Reset points for this hot spot instance
-                    hotSpotLastHitTime = -9999f;  // Reset hit timer so first hit counts immediately
-                    HotSpot_SetVisualsActive(true);
-                    HotSpot_UpdateVisuals(true);  // Force live color on spawn
-                    hotSpotInside = IsBallOverlappingHotSpot(ballRb.position);
-                }
-                else if (HotSpotActive() && ballRb)
-                {
-                    // Keep visual active but don't reposition - it stays where it spawned
-                    HotSpot_SetVisualsActive(true);
-                    hotSpotInside = IsBallOverlappingHotSpot(ballRb.position);
-                    hotSpotLastPos = ballRb.position;
-                }
             }
 
             OnThrown();
@@ -1140,7 +1162,7 @@ public class RunScoring2D : MonoBehaviour
             travelDistanceWithoutOvertime = 0f;
             hotSpotBonusDistance = 0f;
             overtimeBonusDisplayed = 0;
-            firstPowerupUsed = 0;
+            // Note: firstPowerupUsed is reset in throwEvent just before powerup detection runs
         }
         // else: continuing within same run - keep cumulative distances and overtime bonus
 
@@ -1372,6 +1394,8 @@ public class RunScoring2D : MonoBehaviour
         resultLatched = true;
 
         UpdateScoreText();
+        savedFirstPowerupUsed = firstPowerupUsed;  // Preserve for possible Encore revive
+        firstPowerupUsed = 0;  // Reset powerup order after score is displayed, before next run
         ApplyPendingRunRewardsNow(latchedSnapshot.xpTotal);
 
         SaveTotalsIfDirty(true);
@@ -1382,7 +1406,6 @@ public class RunScoring2D : MonoBehaviour
         shownLandingMult = 1f;
 
         if (overtimeComparisonText) overtimeComparisonText.text = "";
-
         if (actions) actions.OnRunEnded();
         UpdateThrowsUi();
     }
@@ -1437,12 +1460,9 @@ public class RunScoring2D : MonoBehaviour
         resultLatched = true;
 
         UpdateScoreText();
+        savedFirstPowerupUsed = firstPowerupUsed;  // Preserve for possible Encore revive
+        firstPowerupUsed = 0;  // Reset powerup order after score is displayed, before next run
         ApplyPendingRunRewardsNow(latchedSnapshot.xpTotal);
-
-        SaveTotalsIfDirty(true);
-        UpdateTotalsUI();
-
-        // IMPORTANT: start a NEW landing emitter for this stop
         if (landingShownToPlayer)
         {
             StartNewLandingVfx(followBall: true);
@@ -1576,16 +1596,18 @@ public class RunScoring2D : MonoBehaviour
     // Returns the rounded value for popup/feedback.
     public int AwardEdgeCaseDistanceLikeNormal(float throwDistance, Vector2 landingWorldPos, float closeness01)
     {
-        float m = GetLandingMultiplierAt(landingWorldPos);
-
+        // For Edge Case, use only edge value (top wall), not corner bonuses
+        WorldBounds b = ComputeBounds();
+        GetCenterNormalized(landingWorldPos, b, out float nx, out float ny);
+        bool capped = streakActive && ShouldCapRightNow();
+        float edgeValue = capped ? cappedEdgeValue : normalEdgeValue;
         float scaled = throwDistance * Mathf.Max(0.0001f, distanceUnitScale) * Mathf.Max(0.1f, edgeCaseDistanceMultiplier);
-
         // Closeness weighting: floor at baseline, curve toward 1 with exponent to heavily reward tighter shots.
         float c = Mathf.Clamp01(closeness01);
         float closenessBoost = Mathf.Pow(c, Mathf.Max(0.1f, edgeCaseClosenessExponent));
         float closenessFactor = Mathf.Max(edgeCaseClosenessBaseline, closenessBoost);
-
-        float add = Mathf.Max(0f, scaled * closenessFactor * m);
+        // Use only the top wall multiplier, not corner bonuses
+        float add = Mathf.Max(0f, scaled * closenessFactor * edgeValue);
 
         int xpToAdd = RoundInt(add);
         if (xp) xp.AddXp(xpToAdd);
@@ -1713,6 +1735,15 @@ public class RunScoring2D : MonoBehaviour
         return GetLandingMultiplierAt(worldPos, applyAmp);
     }
 
+    // Check if ball position qualifies for Edge Case (close to top wall)
+    public bool IsCloseToTopWall(Vector2 worldPos, float proximityThreshold, out float distancePct)
+    {
+        WorldBounds b = ComputeBounds();
+        GetCenterNormalized(worldPos, b, out float nx, out float ny);
+        distancePct = ny;  // ny is 0 at center, 1 at top/bottom edge
+        return ny >= (1f - proximityThreshold);
+    }
+
     // Heatmap / preview overload: lets UI request landing-amp curve without changing gameplay state.
     public float GetLandingMultiplierAt(Vector2 worldPos, bool applyLandingAmp)
     {
@@ -1764,9 +1795,10 @@ public class RunScoring2D : MonoBehaviour
         public float xpMultShown;
         public int xpPct;
         public int xpTotal;   // this is THE score (score == xp)
+        public int powerupOrder;  // 0 = none, 1 = overtime first, 2 = hot spot first
     }
 
-    RunSnapshot latchedSnapshot; // add this as a field near your other state
+    RunSnapshot latchedSnapshot;
 
     RunSnapshot BuildSnapshot(int distInt, int distBase, int distHotSpot, int overtimeBonus, float landingShown, float xpMultShown)
     {
@@ -1777,6 +1809,7 @@ public class RunScoring2D : MonoBehaviour
         s.distHotSpot = Mathf.Max(0, distHotSpot);
         s.overtimeBonus = Mathf.Max(0, overtimeBonus);
         s.landingShown = landingShown;
+        s.powerupOrder = firstPowerupUsed;  // Save the powerup order for this run
 
         s.xpMultShown = xpMultShown;
         s.xpPct = Mathf.RoundToInt((xpMultShown - 1f) * 100f);
@@ -1838,7 +1871,7 @@ public class RunScoring2D : MonoBehaviour
             string distanceStr = $"{s.distBase}";
 
             // Display bonuses in the order powerups were first used
-            if (firstPowerupUsed == 1)  // Overtime first
+            if (s.powerupOrder == 1)  // Overtime first
             {
                 // Show Overtime then Hot Spot
                 if (s.overtimeBonus > 0)
@@ -2173,6 +2206,8 @@ public class RunScoring2D : MonoBehaviour
 
     void CancelRun_NoBank_NoScore()
     {
+        firstPowerupUsed = 0;  // Reset powerup order when run is cancelled
+        savedFirstPowerupUsed = 0;
         streakActive = false;
         if (powerups) powerups.OnRunEnded();
         ClearHotSpotAll();
@@ -2208,8 +2243,6 @@ public class RunScoring2D : MonoBehaviour
         savedOvertimeActive = false;
         savedOvertimeUsed = false;
         savedOvertimeElapsed = 0f;
-
-        if (actions) actions.OnRunEnded();
     }
 
     // ---------------- Timing ----------------

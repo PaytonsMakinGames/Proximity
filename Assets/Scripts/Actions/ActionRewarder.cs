@@ -52,6 +52,14 @@ public class ActionRewarder : MonoBehaviour
     {
         if (!inventory) return;
 
+        // Check if action is unlocked
+        var detector = FindFirstObjectByType<ActionDetector>(FindObjectsInactive.Include);
+        if (detector && !detector.IsActionUnlocked(actionId))
+        {
+            // Action not unlocked yet, don't award
+            return;
+        }
+
         DropEntry[] table = null;
 
         switch (actionId)
@@ -65,7 +73,12 @@ public class ActionRewarder : MonoBehaviour
 
         if (table == null || table.Length == 0) return;
 
-        string id = Roll(table);
+        // Filter table to only include unlocked powerups
+        var manager = FindFirstObjectByType<PowerupManager>(FindObjectsInactive.Include);
+        DropEntry[] filteredTable = FilterUnlockedPowerups(table, manager);
+        if (filteredTable == null || filteredTable.Length == 0) return;
+
+        string id = Roll(filteredTable);
 
         Vector2 where = ballRb ? ballRb.position : Vector2.zero;
         Color actionColor = GetActionColor(actionId);
@@ -107,15 +120,36 @@ public class ActionRewarder : MonoBehaviour
     {
         if (!inventory) return;
 
+        // Check if Edge Case action is unlocked
+        var detector = FindFirstObjectByType<ActionDetector>(FindObjectsInactive.Include);
+        if (detector && !detector.IsActionUnlocked("EdgeCase"))
+        {
+            return;
+        }
+
         DropEntry[] table = dropsEdgeCase;
         if (table == null || table.Length == 0) return;
 
-        string id = Roll(table);
+        // Filter table to only include unlocked powerups
+        var manager = FindFirstObjectByType<PowerupManager>(FindObjectsInactive.Include);
+        table = FilterUnlockedPowerups(table, manager);
+
         Vector2 where = ballRb ? ballRb.position : Vector2.zero;
         int distanceBonus = scoring ? scoring.AwardEdgeCaseDistanceLikeNormal(throwDistance, where, closeness01) : Mathf.RoundToInt(throwDistance);
-
         string actionHex = "96C8FF";  // Edge Case color
         string xpHex = ColorToHex(rewardXpColor);
+
+        if (table == null || table.Length == 0)
+        {
+            // No unlocked powerups, just give distance bonus
+            if (popups)
+            {
+                popups.PopAtWorld(where, $"<color=#{actionHex}>Edge Case!</color>\n<color=#{xpHex}>+{distanceBonus} XP</color>", Color.white);
+            }
+            return;
+        }
+
+        string id = Roll(table);
         string itemHex = ColorToHex(rewardItemColor);
 
         if (string.IsNullOrEmpty(id))
@@ -123,7 +157,7 @@ public class ActionRewarder : MonoBehaviour
             // No drop - just distance bonus (single popup with newline)
             if (popups)
             {
-                popups.PopAtWorld(where, $"<color=#{actionHex}>Edge Case!</color>\n<color=#{xpHex}>+{distanceBonus}d</color>", Color.white);
+                popups.PopAtWorld(where, $"<color=#{actionHex}>Edge Case!</color>\n<color=#{xpHex}>+{distanceBonus} XP</color>", Color.white);
             }
             return;
         }
@@ -141,7 +175,7 @@ public class ActionRewarder : MonoBehaviour
 
         if (popups)
         {
-            popups.PopAtWorld(where, $"<color=#{actionHex}>Edge Case!</color>\n<color=#{itemHex}>+1 {prettyName}</color>\n<color=#{xpHex}>+{distanceBonus}d</color>", Color.white);
+            popups.PopAtWorld(where, $"<color=#{actionHex}>Edge Case!</color>\n<color=#{itemHex}>+1 {prettyName}</color>\n<color=#{xpHex}>+{distanceBonus} XP</color>", Color.white);
         }
     }
 
@@ -211,5 +245,33 @@ public class ActionRewarder : MonoBehaviour
     {
         Color32 c = color;
         return c.r.ToString("X2") + c.g.ToString("X2") + c.b.ToString("X2");
+    }
+
+    /// <summary>
+    /// Filter drop table to only include unlocked powerups.
+    /// </summary>
+    DropEntry[] FilterUnlockedPowerups(DropEntry[] table, PowerupManager manager)
+    {
+        if (table == null || table.Length == 0) return table;
+        if (!manager) return table; // If no manager, don't filter (shouldn't happen)
+
+        var filtered = new System.Collections.Generic.List<DropEntry>();
+        foreach (var entry in table)
+        {
+            // Empty ID means "whiff" (no drop), always allow
+            if (string.IsNullOrEmpty(entry.id))
+            {
+                filtered.Add(entry);
+                continue;
+            }
+
+            // Only include if powerup is unlocked
+            if (manager.IsPowerupUnlocked(entry.id))
+            {
+                filtered.Add(entry);
+            }
+        }
+
+        return filtered.ToArray();
     }
 }

@@ -1,0 +1,231 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6ff73d23cdab90e499bb5cf46c5984e4, type: 3}
+  m_Name: LevelRewardDatabase
+  m_EditorClassIdentifier: Assembly-CSharp::LevelRewardDatabase
+  levelRewards:
+  - level: 1
+    rewards: []
+  - level: 2
+    rewards:
+    - {fileID: 11400000, guid: 5e66f9262fddc044e8180286995a6810, type: 2}
+  - level: 3
+    rewards:
+    - {fileID: 11400000, guid: 33dbed93ae2998d489e50aa5752e05f5, type: 2}
+  - level: 4
+    rewards:
+    - {fileID: 11400000, guid: ca60e365f9a874d488dae293c52d1ebc, type: 2}
+  - level: 5
+    rewards:
+    - {fileID: 11400000, guid: 3f7ee6fb8a50be14ab3116eeaf0641cc, type: 2}
+  - level: 6
+    rewards:
+    - {fileID: 11400000, guid: a658ccec29374284fac0aaacc0a8ddb2, type: 2}
+  - level: 7
+    rewards:
+    - {fileID: 11400000, guid: 52399e27f4c639848951a04ea1020536, type: 2}
+    - {fileID: 11400000, guid: fa3e818a12150d94baadf38897660684, type: 2}
+  - level: 8
+    rewards:
+    - {fileID: 11400000, guid: cd16fae52b5bd6b4b9b4e1a7daabfb3c, type: 2}
+  - level: 9
+    rewards:
+    - {fileID: 11400000, guid: 6dd7f76fe2f68664e8dda6c4fec08823, type: 2}
+  - level: 10
+    rewards:
+    - {fileID: 11400000, guid: f3ec079a108f592418075f6ba67bf7f9, type: 2}
+  - level: 11
+    rewards:
+    - {fileID: 11400000, guid: e11d2bc489e2bb142985bf9926b0a0d6, type: 2}
+    - {fileID: 11400000, guid: 6dc387b5c56f81040ae8ed03e7ae7595, type: 2}
+  - level: 12
+    rewards:
+    - {fileID: 11400000, guid: de69c358d328ddd4a8835cc65c39cd3e, type: 2}
+  - level: 13
+    rewards:
+    - {fileID: 11400000, guid: 07ce647434402a140bdd5886d5092cf5, type: 2}
+  - level: 14
+    rewards:
+    - {fileID: 11400000, guid: 6fe45a820c00b80438ff7280b76a1f4b, type: 2}
+  - level: 15
+    rewards:
+    - {fileID: 11400000, guid: 6abedf8d2edc19045874c9506a8073bd, type: 2}
+  - level: 16
+    rewards: []
+  - level: 17
+    rewards: []
+  - level: 18
+    rewards:
+    - {fileID: 11400000, guid: f6de0f71c6f0f884da253c2ca168ccc3, type: 2}
+  - level: 19
+    rewards: []
+  - level: 20
+    rewards: []
+  - level: 21
+    rewards: []
+  - level: 22
+    rewards: []
+  - level: 23
+    rewards: []
+  - level: 24
+    rewards:
+    - {fileID: 11400000, guid: cc95fab35bb8fe24389d817ca411e7a4, type: 2}
+  - level: 25
+    rewards: []
+  - level: 26
+    rewards: []
+  - level: 27
+    rewards: []
+  - level: 28
+    rewards: []
+  - level: 29
+    rewards: []
+  - level: 30
+    rewards: []
+  - level: 31
+    rewards: []
+  - level: 32
+    rewards: []
+  - level: 33
+    rewards: []
+  - level: 34
+    rewards: []
+  - level: 35
+    rewards: []
+  - level: 36
+    rewards: []
+  - level: 37
+    rewards: []
+  - level: 38
+    rewards: []
+  - level: 39
+    rewards: []
+  - level: 40
+    rewards: []
+  - level: 41
+    rewards: []
+  - level: 42
+    rewards: []
+  - level: 43
+    rewards: []
+  - level: 44
+    rewards: []
+  - level: 45
+    rewards: []
+  - level: 46
+    rewards: []
+  - level: 47
+    rewards: []
+  - level: 48
+    rewards: []
+  - level: 49
+    rewards: []
+  - level: 50
+    rewards: []
+  - level: 51
+    rewards: []
+  - level: 52
+    rewards: []
+  - level: 53
+    rewards: []
+  - level: 54
+    rewards: []
+  - level: 55
+    rewards: []
+  - level: 56
+    rewards: []
+  - level: 57
+    rewards: []
+  - level: 58
+    rewards: []
+  - level: 59
+    rewards: []
+  - level: 60
+    rewards: []
+  - level: 61
+    rewards: []
+  - level: 62
+    rewards: []
+  - level: 63
+    rewards: []
+  - level: 64
+    rewards: []
+  - level: 65
+    rewards: []
+  - level: 66
+    rewards: []
+  - level: 67
+    rewards: []
+  - level: 68
+    rewards: []
+  - level: 69
+    rewards: []
+  - level: 70
+    rewards: []
+  - level: 71
+    rewards: []
+  - level: 72
+    rewards: []
+  - level: 73
+    rewards: []
+  - level: 74
+    rewards: []
+  - level: 75
+    rewards: []
+  - level: 76
+    rewards: []
+  - level: 77
+    rewards: []
+  - level: 78
+    rewards: []
+  - level: 79
+    rewards: []
+  - level: 80
+    rewards: []
+  - level: 81
+    rewards: []
+  - level: 82
+    rewards: []
+  - level: 83
+    rewards: []
+  - level: 84
+    rewards: []
+  - level: 85
+    rewards: []
+  - level: 86
+    rewards: []
+  - level: 87
+    rewards: []
+  - level: 88
+    rewards: []
+  - level: 89
+    rewards: []
+  - level: 90
+    rewards: []
+  - level: 91
+    rewards: []
+  - level: 92
+    rewards: []
+  - level: 93
+    rewards: []
+  - level: 94
+    rewards: []
+  - level: 95
+    rewards: []
+  - level: 96
+    rewards: []
+  - level: 97
+    rewards: []
+  - level: 98
+    rewards: []
+  - level: 99
+    rewards: []

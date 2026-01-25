@@ -189,7 +189,16 @@ public class PowerupRadialMenuController : MonoBehaviour
         {
             if (!p) continue;
             if (string.IsNullOrEmpty(p.id)) continue;
-            if (inventory.GetCount(p.id) > 0) owned.Add(p);
+
+            // Only show if player owns it AND it's unlocked
+            if (inventory.GetCount(p.id) > 0)
+            {
+                // Check if unlocked
+                if (manager && !manager.IsPowerupUnlocked(p.id))
+                    continue; // Skip locked powerups
+
+                owned.Add(p);
+            }
         }
 
         if (owned.Count == 0) return;
@@ -384,7 +393,7 @@ public class PowerupRadialMenuController : MonoBehaviour
 
         if (!manager || string.IsNullOrEmpty(manager.ArmedId))
         {
-            armedLabel.text = "None";
+            armedLabel.text = "";
             return;
         }
 

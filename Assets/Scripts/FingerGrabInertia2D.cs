@@ -14,6 +14,7 @@ public class FingerGrabInertia2D : MonoBehaviour
     [Header("Throw")]
     [SerializeField] float throwMultiplier = 1.4f;
     [SerializeField] float maxThrowSpeed = 1000f;
+    [SerializeField, Min(0f)] float throwDeadZone = 0.05f;  // Minimum velocity to count as a throw (prevents tiny accidental throws)
 
     [Header("Velocity sampling (for consistent throws)")]
     [SerializeField, Range(3, 20)] int velocitySampleCount = 8;
@@ -320,6 +321,16 @@ public class FingerGrabInertia2D : MonoBehaviour
         }
         else
         {
+            // Catch: enable trails to continue from previous throw (don't clear)
+            var trails = GetComponentsInChildren<TrailRenderer>(true);
+            foreach (var trail in trails)
+            {
+                if (trail)
+                {
+                    trail.emitting = true;
+                }
+            }
+
             dragOffsetWorld = rb.position - fingerWorld;
 
             if (speed > vfxMinSpeedToCountAsCatch)
@@ -379,24 +390,39 @@ public class FingerGrabInertia2D : MonoBehaviour
         if (mag > maxThrowSpeed)
             throwVel = throwVel / mag * maxThrowSpeed;
 
-        // Keep your old behavior: only assist if "overlapping wall" (as your older build did)
-        if (IsActuallyOverlappingWall())
-            throwVel = ApplyWallReleaseAssistPreserveSpeed(throwVel);
-
-        rb.linearVelocity = throwVel;
-
-        if (throwVel.sqrMagnitude <= 0.0000001f)
+        // Dead zone: if velocity is too small, treat as drop instead of throw
+        if (throwVel.sqrMagnitude < throwDeadZone * throwDeadZone)
         {
             WasDropped = true;
             WasThrown = false;
+            rb.linearVelocity = Vector2.zero;
+            // No throw: keep trails disabled
+            var trails = GetComponentsInChildren<TrailRenderer>(true);
+            foreach (var trail in trails)
+            {
+                if (trail) trail.emitting = false;
+            }
         }
         else
         {
+            // Keep your old behavior: only assist if "overlapping wall" (as your older build did)
+            if (IsActuallyOverlappingWall())
+                throwVel = ApplyWallReleaseAssistPreserveSpeed(throwVel);
+
+            rb.linearVelocity = throwVel;
+
             WasThrown = true;
             WasDropped = false;
 
             // Apply flight damping to the thrown ball
             rb.linearDamping = flightLinearDamping;
+
+            // Throw: enable trails so the throw renders a trail
+            var trails = GetComponentsInChildren<TrailRenderer>(true);
+            foreach (var trail in trails)
+            {
+                if (trail) trail.emitting = true;
+            }
         }
 
         sampleFilled = 0;
@@ -421,6 +447,17 @@ public class FingerGrabInertia2D : MonoBehaviour
 
         WasThrown = false;
         WasDropped = false;
+
+        // Keep trails disabled and clear any residual line
+        var trails = GetComponentsInChildren<TrailRenderer>(true);
+        foreach (var trail in trails)
+        {
+            if (trail)
+            {
+                trail.emitting = false;
+                trail.Clear();
+            }
+        }
 
         OnDragEnded?.Invoke(false);
     }
@@ -593,14 +630,22 @@ public class FingerGrabInertia2D : MonoBehaviour
             if (trail) trail.emitting = false;
         }
 
-        // Wait a frame to let physics settle
+        // Wait TWO frames to ensure trails are completely stopped and no residual line renders
+        yield return null;
         yield return null;
 
-        // Re-enable trails to start fresh
         foreach (var trail in trails)
         {
-            if (trail)
+            if (!trail) continue;
+
+            if (LastPickupWasCatch)
             {
+                // Catch: continue existing trail (do not clear)
+                trail.emitting = true;
+            }
+            else
+            {
+                // Non-catch: start fresh trail for this drag
                 trail.Clear();
                 trail.emitting = true;
             }

@@ -84,6 +84,20 @@ public class ActionManager : MonoBehaviour
 
     void Update()
     {
+        // Clear marker if ball is being held (grabbed) - handles pickup after cancelled runs
+        if (grab != null)
+        {
+            var rbGrab = grab.GetComponent<Rigidbody2D>();
+            if (rbGrab != null && rbGrab.bodyType == RigidbodyType2D.Kinematic)
+            {
+                if (predictedStopMarker && predictedStopMarker.gameObject.activeSelf)
+                {
+                    predictedStopMarker.gameObject.SetActive(false);
+                    markerWasVisible = false;
+                }
+            }
+        }
+
         // Track distance traveled during the current throw (for dynamic Wall Frenzy)
         if (throwInFlight && grab != null)
         {
@@ -216,6 +230,11 @@ public class ActionManager : MonoBehaviour
 
     public void OnPickup(bool wasCatch)
     {
+        // Clear marker on any pickup (including after cancelled runs)
+        if (predictedStopMarker && predictedStopMarker.gameObject.activeSelf)
+            predictedStopMarker.gameObject.SetActive(false);
+        markerWasVisible = false;
+
         if (!throwInFlight)
             return;
 

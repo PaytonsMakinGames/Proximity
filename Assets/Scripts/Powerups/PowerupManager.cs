@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 public class PowerupManager : MonoBehaviour
@@ -7,6 +8,10 @@ public class PowerupManager : MonoBehaviour
     [SerializeField] PowerupDatabase db;
     [SerializeField] PowerupInventory inventory;
     [SerializeField] FloatingPopupSystem popups;
+
+    // Track unlocked powerups
+    HashSet<string> unlockedPowerups = new HashSet<string>();
+    const string UNLOCKED_POWERUPS_KEY = "PowerupManager_UnlockedPowerups_v1";
 
     [Header("Landing Amplifier (v1)")]
     [SerializeField] string landingAmplifierId = "landing_amplifier";
@@ -18,6 +23,7 @@ public class PowerupManager : MonoBehaviour
 
     [Header("Insurance (v1)")]
     [SerializeField] string insuranceId = "insurance";
+    [SerializeField] float insuranceMinMultiplier = 2.0f;
     [SerializeField] Color insurancePopupColor = new Color(0.85f, 1f, 0.85f, 1f);
 
     [Header("Sticky Ball (v1)")]
@@ -40,6 +46,7 @@ public class PowerupManager : MonoBehaviour
     // Runtime state: which powerups are "active this throw"
     bool landingAmpActiveThisThrow;
     bool insuranceActiveThisThrow;
+    bool insurancePendingConsumption;  // True if Insurance active but not yet consumed (waiting for ball stop)
     bool stickyThrowActive;
     bool hotSpotUsedThisRun;
     bool hotSpotSpawnedThisRun;
@@ -72,6 +79,9 @@ public class PowerupManager : MonoBehaviour
     {
         if (!inventory) inventory = FindFirstObjectByType<PowerupInventory>(FindObjectsInactive.Include);
         if (!popups) popups = FindFirstObjectByType<FloatingPopupSystem>(FindObjectsInactive.Include);
+
+        // Load unlocked powerups from save
+        LoadUnlockedPowerups();
     }
 
     public bool HasArmed => !string.IsNullOrEmpty(ArmedId);
@@ -96,14 +106,74 @@ public class PowerupManager : MonoBehaviour
         return true;
     }
 
-    public void Disarm_NoConsume()
+    /// <summary>
+    /// Unlock a powerup so it can be used and appear in UI.
+    /// Called by LevelRewardManager when a player levels up.
+    /// </summary>
+    public void UnlockPowerup(string powerupId)
     {
-        if (string.IsNullOrEmpty(ArmedId)) return;
-        ArmedId = null;
-        OnArmedChanged?.Invoke();
+        if (string.IsNullOrEmpty(powerupId)) return;
+
+        if (!unlockedPowerups.Contains(powerupId))
+        {
+            unlockedPowerups.Add(powerupId);
+            SaveUnlockedPowerups();
+            Debug.Log($"[PowerupManager] Unlocked powerup: {powerupId}");
+            OnArmedChanged?.Invoke();  // Notify listeners (e.g., pad visibility controller)
+        }
     }
 
-    // Called by RunScoring2D when a run ends for any reason.
+    /// <summary>
+    /// Check if ANY powerup has been unlocked.
+    /// </summary>
+    public bool HasAnyPowerupUnlocked()
+    {
+        return unlockedPowerups.Count > 0;
+    }
+
+    /// <summary>
+    /// Check if a powerup has been unlocked.
+    /// </summary>
+    public bool IsPowerupUnlocked(string powerupId)
+    {
+        return unlockedPowerups.Contains(powerupId);
+    }
+
+    void SaveUnlockedPowerups()
+    {
+        var list = new List<string>(unlockedPowerups);
+        var json = JsonUtility.ToJson(new PowerupUnlockedList { powerups = list });
+        PlayerPrefs.SetString(UNLOCKED_POWERUPS_KEY, json);
+        PlayerPrefs.Save();
+    }
+
+    void LoadUnlockedPowerups()
+    {
+        if (!PlayerPrefs.HasKey(UNLOCKED_POWERUPS_KEY)) return;
+
+        var json = PlayerPrefs.GetString(UNLOCKED_POWERUPS_KEY, "");
+        if (string.IsNullOrEmpty(json)) return;
+
+        try
+        {
+            var loaded = JsonUtility.FromJson<PowerupUnlockedList>(json);
+            if (loaded?.powerups != null)
+            {
+                unlockedPowerups = new HashSet<string>(loaded.powerups);
+            }
+        }
+        catch
+        {
+            Debug.LogWarning("[PowerupManager] Failed to load unlocked powerups");
+        }
+    }
+
+    [System.Serializable]
+    class PowerupUnlockedList
+    {
+        public List<string> powerups = new List<string>();
+    }
+
     public void OnRunEnded()
     {
         Disarm_NoConsume();
@@ -137,6 +207,8 @@ public class PowerupManager : MonoBehaviour
         overtimeSavedActive = false;
         overtimeSavedUsed = false;
         overtimeSavedElapsed = 0f;
+
+        insurancePendingConsumption = false;  // Reset pending insurance for new run
     }
 
     // Called by RunScoring2D when a new throw is released.
@@ -161,14 +233,17 @@ public class PowerupManager : MonoBehaviour
         // Insurance
         else if (def.id == insuranceId)
         {
-            if (TryConsumeIfArmedMatches(PowerupTrigger.NextThrowRelease))
+            if (HasArmed && ArmedId == insuranceId)
             {
                 insuranceActiveThisThrow = true;
+                insurancePendingConsumption = true;  // Mark for consumption when ball stops
                 if (popups)
                 {
                     popups.PopAtWorldWithExtraOffset(ballWorldPos, "Insurance!", insurancePopupColor, new Vector2(0f, 0f));
-                    popups.PopAtWorldWithExtraOffset(ballWorldPos, "0x Blocked", insurancePopupColor, new Vector2(0f, -60f));
+                    popups.PopAtWorldWithExtraOffset(ballWorldPos, $"Guaranteed {insuranceMinMultiplier}x", insurancePopupColor, new Vector2(0f, -60f));
                 }
+                // Don't consume yet - will consume when ball stops
+                Disarm_NoConsume();
             }
         }
         // Hot Spot
@@ -253,6 +328,7 @@ public class PowerupManager : MonoBehaviour
     {
         landingAmpActiveThisThrow = false;
         insuranceActiveThisThrow = false;
+        insurancePendingConsumption = false;  // Insurance unused if ball picked up
         hotSpotJustSpawnedThisThrow = false;
     }
 
@@ -318,6 +394,16 @@ public class PowerupManager : MonoBehaviour
         return inventory.TrySpend(powerupId, count);
     }
 
+    // Consume pending insurance when ball stops (called by RunScoring2D)
+    public void ConsumePendingInsuranceIfAny()
+    {
+        if (!insurancePendingConsumption) return;
+        if (!inventory) return;
+
+        inventory.TrySpend(insuranceId, 1);
+        insurancePendingConsumption = false;
+    }
+
     bool TryConsumeIfArmedMatches(PowerupTrigger trigger)
     {
         if (!HasArmed) return false;
@@ -335,5 +421,12 @@ public class PowerupManager : MonoBehaviour
         ArmedId = null;
         OnArmedChanged?.Invoke();
         return true;
+    }
+
+    public void Disarm_NoConsume()
+    {
+        if (string.IsNullOrEmpty(ArmedId)) return;
+        ArmedId = null;
+        OnArmedChanged?.Invoke();
     }
 }

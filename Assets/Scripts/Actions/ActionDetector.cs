@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -14,6 +15,10 @@ public class ActionDetector : MonoBehaviour
 
     [Header("Quick Catch")]
     [SerializeField, Min(0f)] float quickCatchMinSpeed = 8f;
+
+    // Track unlocked actions
+    HashSet<string> unlockedActions = new HashSet<string>();
+    const string UNLOCKED_ACTIONS_KEY = "ActionDetector_UnlockedActions_v1";
 
     [Header("Wall Frenzy (All 4 Walls)")]
     [SerializeField] int wallFrenzyMinWalls = 12;
@@ -56,10 +61,27 @@ public class ActionDetector : MonoBehaviour
         if (!scoring) scoring = FindFirstObjectByType<RunScoring2D>(FindObjectsInactive.Include);
         if (!grab) grab = FindFirstObjectByType<FingerGrabInertia2D>(FindObjectsInactive.Include);
         if (!rewarder) rewarder = FindFirstObjectByType<ActionRewarder>(FindObjectsInactive.Include);
+
+        // Load unlocked actions from save
+        LoadUnlockedActions();
     }
 
     void Update()
     {
+        // Clear marker if ball is being held (grabbed) - handles pickup after cancelled runs
+        if (grab != null)
+        {
+            var rb = grab.GetComponent<Rigidbody2D>();
+            if (rb != null && rb.bodyType == RigidbodyType2D.Kinematic)
+            {
+                if (predictedStopMarker && predictedStopMarker.gameObject.activeSelf)
+                {
+                    predictedStopMarker.gameObject.SetActive(false);
+                    markerJustTeleported = false;
+                }
+            }
+        }
+
         // Track distance for dynamic Wall Frenzy calculation
         if (throwInFlight && grab != null)
         {
@@ -165,11 +187,19 @@ public class ActionDetector : MonoBehaviour
         greedDoneThisRun = false;
         desperationDoneThisRun = false;
 
-        // Award Edge Case at run end to align with score dimming
-        if (!edgeCaseAwardedThisThrow && edgeCaseQualified && closestWallThisThrow != -1 && edgeCaseWallTouches <= 1 && edgeCaseCloseness01 > 0f)
+        // Award Edge Case only if ball is still near the top wall when run ends
+        if (!edgeCaseAwardedThisThrow && edgeCaseQualified && closestWallThisThrow == 2 && edgeCaseWallTouches <= 1 && grab != null && scoring != null)
         {
-            edgeCaseAwardedThisThrow = true;
-            if (rewarder) rewarder.AwardEdgeCase(throwDistance, edgeCaseCloseness01);
+            var rb = grab.GetComponent<Rigidbody2D>();
+            if (rb != null)
+            {
+                // Use the same wall detection as landing multiplier
+                if (scoring.IsCloseToTopWall(rb.position, edgeCaseProximityThreshold, out float distPct))
+                {
+                    edgeCaseAwardedThisThrow = true;
+                    if (rewarder) rewarder.AwardEdgeCase(throwDistance, edgeCaseCloseness01);
+                }
+            }
         }
 
         edgeCaseQualified = false;
@@ -255,6 +285,11 @@ public class ActionDetector : MonoBehaviour
 
     public void OnPickup(bool wasCatch)
     {
+        // Clear marker on any pickup (including after cancelled runs)
+        if (predictedStopMarker && predictedStopMarker.gameObject.activeSelf)
+            predictedStopMarker.gameObject.SetActive(false);
+        markerJustTeleported = false;
+
         if (!throwInFlight)
         {
             throwInFlight = false;
@@ -302,5 +337,64 @@ public class ActionDetector : MonoBehaviour
     {
         if (!scoring) return false;
         return scoring.RunActive && scoring.ThrowsLeft == 1;
+    }
+
+    /// <summary>
+    /// Unlock an action so it can be triggered and rewarded.
+    /// Called by LevelRewardManager when a player levels up.
+    /// </summary>
+    public void UnlockAction(string actionId)
+    {
+        if (string.IsNullOrEmpty(actionId)) return;
+
+        if (!unlockedActions.Contains(actionId))
+        {
+            unlockedActions.Add(actionId);
+            SaveUnlockedActions();
+            Debug.Log($"[ActionDetector] Unlocked action: {actionId}");
+        }
+    }
+
+    /// <summary>
+    /// Check if an action has been unlocked.
+    /// </summary>
+    public bool IsActionUnlocked(string actionId)
+    {
+        return unlockedActions.Contains(actionId);
+    }
+
+    void SaveUnlockedActions()
+    {
+        var list = new System.Collections.Generic.List<string>(unlockedActions);
+        var json = JsonUtility.ToJson(new ActionUnlockedList { actions = list });
+        PlayerPrefs.SetString(UNLOCKED_ACTIONS_KEY, json);
+        PlayerPrefs.Save();
+    }
+
+    void LoadUnlockedActions()
+    {
+        if (!PlayerPrefs.HasKey(UNLOCKED_ACTIONS_KEY)) return;
+
+        var json = PlayerPrefs.GetString(UNLOCKED_ACTIONS_KEY, "");
+        if (string.IsNullOrEmpty(json)) return;
+
+        try
+        {
+            var loaded = JsonUtility.FromJson<ActionUnlockedList>(json);
+            if (loaded?.actions != null)
+            {
+                unlockedActions = new HashSet<string>(loaded.actions);
+            }
+        }
+        catch
+        {
+            Debug.LogWarning("[ActionDetector] Failed to load unlocked actions");
+        }
+    }
+
+    [System.Serializable]
+    class ActionUnlockedList
+    {
+        public System.Collections.Generic.List<string> actions = new System.Collections.Generic.List<string>();
     }
 }
