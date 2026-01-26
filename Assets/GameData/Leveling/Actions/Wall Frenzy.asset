@@ -14,4 +14,4 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ActionUnlockReward
   rewardId: Reward_Wall_Frenzy
   displayName: 'Unlock: Wall Frenzy (Action)'
-  actionId: wall_frenzy
+  actionId: WallFrenzy

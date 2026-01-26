@@ -14,4 +14,4 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ActionUnlockReward
   rewardId: Reward_Desperation
   displayName: 'Unlock: Desperation (Action)'
-  actionId: desperation
+  actionId: Desperation

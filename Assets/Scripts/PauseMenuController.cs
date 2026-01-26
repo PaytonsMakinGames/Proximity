@@ -10,6 +10,7 @@ public class PauseMenuController : MonoBehaviour
 
     [Header("Refs")]
     [SerializeField] FingerGrabInertia2D grab;
+    [SerializeField] RunScoring2D scoring;
 
     [Header("PC simulate")]
     [SerializeField] KeyCode toggleKey = KeyCode.P;
@@ -24,6 +25,8 @@ public class PauseMenuController : MonoBehaviour
     {
         if (!grab)
             grab = FindFirstObjectByType<FingerGrabInertia2D>(FindObjectsInactive.Include);
+        if (!scoring)
+            scoring = FindFirstObjectByType<RunScoring2D>(FindObjectsInactive.Include);
         ForceAllClosed();
     }
 
@@ -74,6 +77,10 @@ public class PauseMenuController : MonoBehaviour
 
     public void TogglePause()
     {
+        // Block pause during early onboarding (until Phase 1 full reveal)
+        if (scoring && !scoring.CanPauseNow())
+            return;
+
         if (IsPaused) Resume();
         else Pause();
     }

@@ -8641,6 +8641,10 @@ MonoBehaviour:
   bestNormalColor: {r: 0.5, g: 0.39843747, b: 0.0625, a: 1}
   xp: {fileID: 2147115612}
   inventory: {fileID: 1255481622}
+  onboardingEnabled: 1
+  onboardingRunsKey: OnboardingRunsCompleted
+  onboardingFirstThrowKey: OnboardingFirstThrow
+  throwIndicator: {fileID: 1721410209}
   edgeCaseDistanceMultiplier: 50
   edgeCaseClosenessBaseline: 0.1
   edgeCaseClosenessExponent: 2.5
@@ -8699,6 +8703,7 @@ MonoBehaviour:
   lockerGroup: {fileID: 59311279}
   hudGroup: {fileID: 227202540}
   grab: {fileID: 0}
+  scoring: {fileID: 0}
   toggleKey: 112
 --- !u!114 &1255481622
 MonoBehaviour:
@@ -17112,7 +17117,7 @@ MonoBehaviour:
   xp: {fileID: 2147115612}
   rewardDatabase: {fileID: 11400000, guid: d23e8a9194e845a45a7c7044750407ee, type: 2}
   debugLog: 1
-  testLevel: 5
+  testLevel: 50
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

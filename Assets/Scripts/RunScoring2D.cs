@@ -113,6 +113,12 @@ public class RunScoring2D : MonoBehaviour
     [SerializeField] XpManager xp;
     [SerializeField] PlayerInventory inventory;
 
+    [Header("Onboarding")]
+    [SerializeField] bool onboardingEnabled = true;
+    [SerializeField] string onboardingRunsKey = "OnboardingRunsCompleted";
+    [SerializeField] string onboardingFirstThrowKey = "OnboardingFirstThrow";
+    [SerializeField] ThrowIndicatorHud throwIndicator;
+
     [Header("Edge Case")]
     [SerializeField, Min(0.1f)] float edgeCaseDistanceMultiplier = 3f;  // Multiplier on thrown distance before landing mult
     [SerializeField, Min(0.01f)] float edgeCaseClosenessBaseline = 0.1f; // Minimum closeness factor at threshold
@@ -177,6 +183,11 @@ public class RunScoring2D : MonoBehaviour
 
     bool cancelGestureArmed = true;
 
+    OnboardingPhase currentOnboardingPhase = OnboardingPhase.Phase2;
+    int onboardingRunsCompleted;
+    bool onboardingFirstThrowMade;
+    bool onboardingFullRevealArmed;
+
     public int EffectiveThrowsPerRun
     {
         get
@@ -198,7 +209,15 @@ public class RunScoring2D : MonoBehaviour
     {
         if (!streakActive) return true;
         if (EffectiveThrowsPerRun <= 0) return true;
+        if (IsPhase0FinalThrow()) return true;  // Allow pickup on Phase 0 final throw
         return !throwsExhausted;
+    }
+
+    public bool CanPauseNow()
+    {
+        if (!onboardingEnabled) return true;
+        if (currentOnboardingPhase == OnboardingPhase.Phase2) return true;
+        return OnboardingFullRevealActive();
     }
 
     float totalDistance;
@@ -268,6 +287,7 @@ public class RunScoring2D : MonoBehaviour
     enum LaneAxis { AlongX, AlongY }
     enum LaneAxisMode { AutoFromInitialVelocity, ForceAxis }
     enum ForcedLaneAxis { Horizontal, Vertical }
+    enum OnboardingPhase { Phase0, Phase1, Phase2 }
 
     struct WorldBounds
     {
@@ -289,6 +309,98 @@ public class RunScoring2D : MonoBehaviour
 
     float GetXpMultRaw() => inventory ? inventory.GetXpMultiplier() : 1f;
 
+    OnboardingPhase GetOnboardingPhase()
+    {
+        if (!onboardingEnabled) return OnboardingPhase.Phase2;
+        if (onboardingRunsCompleted <= 0) return OnboardingPhase.Phase0;
+        if (onboardingRunsCompleted == 1) return OnboardingPhase.Phase1;
+        return OnboardingPhase.Phase2;
+    }
+
+    bool OnboardingFullRevealActive()
+    {
+        if (!onboardingEnabled) return false;
+        if (currentOnboardingPhase != OnboardingPhase.Phase1) return false;
+
+        // Full reveal activates as soon as final throw is exhausted in Phase 1,
+        // not just when the run ends. This lets the player see landing mult, in-ball label,
+        // and all visuals while the last throw is still in flight.
+        if (ThrowsExhausted && EffectiveThrowsPerRun > 0) return true;
+
+        // Also return true if the run has ended with full reveal armed (legacy support)
+        return onboardingFullRevealArmed && !streakActive && resultLatched;
+    }
+
+    bool OnboardingHidesScoreUI() => onboardingEnabled && currentOnboardingPhase == OnboardingPhase.Phase0;
+
+    bool OnboardingDistanceOnly()
+    {
+        if (!onboardingEnabled) return false;
+        if (currentOnboardingPhase != OnboardingPhase.Phase1) return false;
+        return !OnboardingFullRevealActive();
+    }
+
+    bool OnboardingHidesPlacementVisuals()
+    {
+        if (!onboardingEnabled) return false;
+        if (currentOnboardingPhase == OnboardingPhase.Phase2) return false;
+        if (currentOnboardingPhase == OnboardingPhase.Phase1 && OnboardingFullRevealActive()) return false;
+        return true;
+    }
+
+    bool OnboardingBlocksEarlyEnd()
+    {
+        if (!onboardingEnabled) return false;
+        if (currentOnboardingPhase == OnboardingPhase.Phase2) return false;
+        if (EffectiveThrowsPerRun <= 0) return false;
+        return !ThrowsExhausted;
+    }
+
+    bool IsPhase0FinalThrow()
+    {
+        if (!onboardingEnabled) return false;
+        if (currentOnboardingPhase != OnboardingPhase.Phase0) return false;
+        if (!ThrowsExhausted) return false;
+        return true;
+    }
+
+    void SyncOnboardingThrowState()
+    {
+        onboardingFullRevealArmed = onboardingEnabled &&
+            currentOnboardingPhase == OnboardingPhase.Phase1 &&
+            ThrowsExhausted &&
+            EffectiveThrowsPerRun > 0;
+    }
+
+    void UpdateThrowIndicatorVisibility()
+    {
+        if (!throwIndicator) return;
+
+        bool shouldShow = onboardingFirstThrowMade || !onboardingEnabled;
+        if (throwIndicator.gameObject.activeSelf != shouldShow)
+            throwIndicator.gameObject.SetActive(shouldShow);
+    }
+
+    void MarkFirstThrowSeen()
+    {
+        if (onboardingFirstThrowMade) return;
+
+        onboardingFirstThrowMade = true;
+        PlayerPrefs.SetInt(onboardingFirstThrowKey, 1);
+        PlayerPrefs.Save();
+        UpdateThrowIndicatorVisibility();
+    }
+
+    void IncrementRunCompleted()
+    {
+        if (!onboardingEnabled) return;
+
+        onboardingRunsCompleted = Mathf.Max(0, onboardingRunsCompleted + 1);
+        PlayerPrefs.SetInt(onboardingRunsKey, onboardingRunsCompleted);
+        PlayerPrefs.SetInt(onboardingFirstThrowKey, onboardingFirstThrowMade ? 1 : 0);
+        PlayerPrefs.Save();
+    }
+
     void Awake()
     {
         if (!cam) cam = Camera.main;
@@ -302,6 +414,10 @@ public class RunScoring2D : MonoBehaviour
         totalDistance = PlayerPrefs.GetFloat(totalDistanceKey, 0f);
         totalBounces = PlayerPrefs.GetInt(totalBouncesKey, 0);
         BestScore = PlayerPrefs.GetFloat("BestScore", 0f);
+
+        onboardingRunsCompleted = PlayerPrefs.GetInt(onboardingRunsKey, 0);
+        onboardingFirstThrowMade = PlayerPrefs.GetInt(onboardingFirstThrowKey, 0) != 0;
+        currentOnboardingPhase = GetOnboardingPhase();
 
         bestDefaultColor = bestNormalColor;
 
@@ -323,6 +439,8 @@ public class RunScoring2D : MonoBehaviour
         }
 
         saveCooldown = saveInterval;
+
+        UpdateThrowIndicatorVisibility();
 
         BuildVfxPool();
         InitLines();
@@ -353,6 +471,13 @@ public class RunScoring2D : MonoBehaviour
 
         // Single decrement per frame
         saveCooldown -= Time.deltaTime;
+
+        // If Phase 0 final throw was caught, end the run now so next throw starts fresh
+        if (streakActive && throwsExhausted && IsPhase0FinalThrow() && !resultLatched && !grab.IsDragging)
+        {
+            EndStreak_DropInstant();
+            return;
+        }
 
         bool uiTick = UiTick();
         bool pausedOrLocked = GameInputLock.Locked;
@@ -558,6 +683,12 @@ public class RunScoring2D : MonoBehaviour
 
             if (!streakActive)
                 return;
+
+            if (OnboardingBlocksEarlyEnd())
+            {
+                stopTimer = 0f;
+                return;
+            }
 
             EndStreak_DropInstant();
         }
@@ -1096,11 +1227,17 @@ public class RunScoring2D : MonoBehaviour
         showLandingInfo = false;
         shownLandingMult = 1f;
         HideAll();
+
+        // Update lastRunPos to current ball position to prevent ghost distance
+        // when the ball is kinematically dragged to the cursor
+        if (ballRb) lastRunPos = ballRb.position;
     }
 
     void OnThrown()
     {
         ClearBestHighlight();
+
+        MarkFirstThrowSeen();
 
         // Let previous landing VFX finish; free slot for next landing
         RetireActiveLandingVfxOnThrow();
@@ -1145,6 +1282,9 @@ public class RunScoring2D : MonoBehaviour
             pendingRunAdjustActive = false;
             pendingBestBaseline = 0f;
         }
+
+        currentOnboardingPhase = GetOnboardingPhase();
+        onboardingFullRevealArmed = false;
 
         // OnRunStarted is now called earlier in throwEvent before powerups are processed
         // Don't call it again here or it will reset powerup state
@@ -1247,6 +1387,8 @@ public class RunScoring2D : MonoBehaviour
 
     void UpdateThrowsUi()
     {
+        SyncOnboardingThrowState();
+
         if (!throwsLeftText) return;
 
         if (EffectiveThrowsPerRun <= 0)
@@ -1279,6 +1421,15 @@ public class RunScoring2D : MonoBehaviour
     void TickStreakFlight()
     {
         Vector2 p = ballRb.position;
+
+        // If the ball was just released (not thrown), reset lastRunPos to avoid ghost distance
+        // This happens when player picks up, drags, and drops without throwing
+        if (prevHeld && !grab.IsDragging && !grab.WasThrown)
+        {
+            lastRunPos = p;
+            return;
+        }
+
         Vector2 delta = p - lastRunPos;
 
         float step = delta.magnitude * Mathf.Max(0.0001f, distanceUnitScale);
@@ -1321,6 +1472,12 @@ public class RunScoring2D : MonoBehaviour
 
         if (stopTimer >= stopHoldTime)
         {
+            if (OnboardingBlocksEarlyEnd())
+            {
+                stopTimer = 0f;
+                return;
+            }
+
             // If Sticky Ball pinned this exact frame, wait 1 frame so the landing visuals
             // (label + wall lines) get a chance to turn on before the run ends.
             if (stickyPinned && Time.frameCount == stickyPinnedFrame)
@@ -1334,28 +1491,37 @@ public class RunScoring2D : MonoBehaviour
     {
         runXpInt = Mathf.Max(0, runXpInt);
 
+        // Skip XP award during onboarding until full reveal activates (Phase 1 final throw)
+        bool allowXpAward = !onboardingEnabled ||
+                           currentOnboardingPhase == OnboardingPhase.Phase2 ||
+                           OnboardingFullRevealActive();
+
         // XP: apply now and allow later delta updates (can be negative)
-        if (xp) xp.BeginOrUpdatePendingRunXp(runXpInt);
+        if (xp && allowXpAward) xp.BeginOrUpdatePendingRunXp(runXpInt);
 
         // Best: allow rollback but never below the best that existed before this run.
-        if (!pendingRunAdjustActive)
+        // Skip best score updates during early onboarding
+        if (!pendingRunAdjustActive && allowXpAward)
         {
             pendingRunAdjustActive = true;
             pendingBestBaseline = BestScore;
         }
 
-        float candidate = Mathf.Max(pendingBestBaseline, runXpInt);
-
-        bool changed = !Mathf.Approximately(candidate, BestScore);
-        BestScore = candidate;
-
-        if (changed)
+        if (allowXpAward)
         {
-            PlayerPrefs.SetFloat("BestScore", BestScore);
-            PlayerPrefs.Save();
-        }
+            float candidate = Mathf.Max(pendingBestBaseline, runXpInt);
 
-        ApplyBestUI((int)BestScore, BestScore > pendingBestBaseline);
+            bool changed = !Mathf.Approximately(candidate, BestScore);
+            BestScore = candidate;
+
+            if (changed)
+            {
+                PlayerPrefs.SetFloat("BestScore", BestScore);
+                PlayerPrefs.Save();
+            }
+
+            ApplyBestUI((int)BestScore, BestScore > pendingBestBaseline);
+        }
     }
 
     void EndStreak_DropInstant()
@@ -1400,6 +1566,8 @@ public class RunScoring2D : MonoBehaviour
 
         SaveTotalsIfDirty(true);
         UpdateTotalsUI();
+
+        IncrementRunCompleted();
 
         HideAll();
         showLandingInfo = false;
@@ -1463,7 +1631,7 @@ public class RunScoring2D : MonoBehaviour
         savedFirstPowerupUsed = firstPowerupUsed;  // Preserve for possible Encore revive
         firstPowerupUsed = 0;  // Reset powerup order after score is displayed, before next run
         ApplyPendingRunRewardsNow(latchedSnapshot.xpTotal);
-        if (landingShownToPlayer)
+        if (landingShownToPlayer && !IsPhase0FinalThrow())
         {
             StartNewLandingVfx(followBall: true);
 
@@ -1483,6 +1651,8 @@ public class RunScoring2D : MonoBehaviour
         if (actions) actions.OnRunEnded();
 
         if (overtimeComparisonText) overtimeComparisonText.text = "";
+
+        IncrementRunCompleted();
     }
 
     void AwardXp(int xpToAdd)
@@ -1653,6 +1823,12 @@ public class RunScoring2D : MonoBehaviour
         else shownLandingMult = 1f;
 
         if (!showLandingInfo)
+        {
+            HideAll();
+            return;
+        }
+
+        if (OnboardingHidesPlacementVisuals())
         {
             HideAll();
             return;
@@ -1862,8 +2038,16 @@ public class RunScoring2D : MonoBehaviour
             return;
         }
 
+        if (OnboardingHidesScoreUI())
+        {
+            HideAllScoreElements();
+            return;
+        }
+
         RunSnapshot s = streakActive ? BuildLiveSnapshot() : latchedSnapshot;
         bool showLandLine = ended ? !lastRunNoLanding : showLandingInfo;
+        bool distanceOnly = OnboardingDistanceOnly();
+        bool allowExpandedUi = !distanceOnly;
 
         // Distance text (BASE distance) with optional bonuses inline in powerup order
         if (distanceText)
@@ -1908,7 +2092,7 @@ public class RunScoring2D : MonoBehaviour
         // Landing multiplier text
         if (landMultText)
         {
-            if (showLandLine)
+            if (showLandLine && allowExpandedUi)
             {
                 landMultText.text = $"land x{s.landingShown:0.00}";
                 landMultText.color = ended ? endedColor : liveColor;
@@ -1924,7 +2108,7 @@ public class RunScoring2D : MonoBehaviour
         bool showXpMult = s.xpPct != 0;
         if (xpMultText)
         {
-            if (showXpMult)
+            if (showXpMult && allowExpandedUi)
             {
                 string xpLine = s.xpPct > 0 ? $"+{s.xpPct}% XP" : $"{s.xpPct}% XP";
                 xpMultText.text = xpLine;
@@ -1941,7 +2125,7 @@ public class RunScoring2D : MonoBehaviour
         bool somethingBeyondDistance = showLandLine || (s.xpPct != 0);
         if (finalScoreText)
         {
-            if (somethingBeyondDistance)
+            if (somethingBeyondDistance && allowExpandedUi)
             {
                 finalScoreText.text = s.xpTotal.ToString();
                 Color finalColor = ended ? new Color(finalScoreColor.r, finalScoreColor.g, finalScoreColor.b, scoreTextEndedColor.a) : finalScoreColor;
@@ -2239,6 +2423,8 @@ public class RunScoring2D : MonoBehaviour
 
         HideAllScoreElements();
         if (overtimeComparisonText) overtimeComparisonText.text = "";
+
+        IncrementRunCompleted();
 
         savedOvertimeActive = false;
         savedOvertimeUsed = false;

@@ -14,4 +14,4 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ActionUnlockReward
   rewardId: Reward_Edge_Case
   displayName: 'Unlock: Edge Case (Action)'
-  actionId: edgecase
+  actionId: EdgeCase
