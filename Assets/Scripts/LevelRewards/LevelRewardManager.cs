@@ -18,6 +18,7 @@ public class LevelRewardManager : MonoBehaviour
 
     [Header("Testing")]
     [SerializeField] int testLevel = 5;
+    [SerializeField] int teleportLevel = 50; // Inspector shortcut to jump to a level and auto-grant rewards
 
     // Track which level-ups have been processed to avoid granting twice
     HashSet<int> processedLevels = new HashSet<int>();
@@ -147,6 +148,42 @@ public class LevelRewardManager : MonoBehaviour
     }
 
     /// <summary>
+    /// Jump to a target level and grant all rewards up to that level.
+    /// </summary>
+    public void TeleportToLevel(int level)
+    {
+        if (!xp) xp = FindFirstObjectByType<XpManager>(FindObjectsInactive.Include);
+        if (!rewardDatabase) rewardDatabase = FindFirstObjectByType<LevelRewardDatabase>(FindObjectsInactive.Include);
+
+        if (!xp)
+        {
+            Debug.LogWarning("[LevelRewardManager] No XP manager found!");
+            return;
+        }
+
+        level = Mathf.Clamp(level, 1, XpCurveRS.MaxLevel);
+
+        int beforeLevel = xp.Level;
+
+        xp.SetLevelImmediate(level);
+
+        // Grant any unprocessed rewards up to the new level.
+        for (int lvl = 1; lvl <= level; lvl++)
+        {
+            if (!processedLevels.Contains(lvl))
+            {
+                processedLevels.Add(lvl);
+                GrantRewardsForLevel(lvl);
+            }
+        }
+
+        SaveProcessedLevels();
+
+        if (debugLog)
+            Debug.Log($"[LevelRewards] Teleported from level {beforeLevel} to {level} (granted missing rewards)");
+    }
+
+    /// <summary>
     /// Dev method: Manually grant rewards for a level (useful for testing).
     /// </summary>
     public void TestGrantLevel(int level)
@@ -154,6 +191,12 @@ public class LevelRewardManager : MonoBehaviour
         // Clear the cache so it can be granted again
         processedLevels.Remove(level);
         GrantRewardsForLevel(level);
+    }
+
+    [ContextMenu("Teleport To Level (uses teleportLevel field)")]
+    void TeleportToLevelFromInspector()
+    {
+        TeleportToLevel(teleportLevel);
     }
 
     [ContextMenu("Test Grant Level (uses testLevel field)")]

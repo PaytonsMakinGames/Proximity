@@ -15,7 +15,7 @@ MonoBehaviour:
   id: overtime
   displayName: Overtime
   trigger: 4
-  icon: {fileID: 0}
+  icon: {fileID: 21300000, guid: b26d4c23d9143f445a5a231c377b740c, type: 3}
   description: Distance gain increases the longer the ball stays in motion.
   f0: 0
   f1: 0

@@ -15,7 +15,7 @@ MonoBehaviour:
   id: hot_spot
   displayName: Hot Spot
   trigger: 4
-  icon: {fileID: 0}
+  icon: {fileID: 21300000, guid: 7e57f2a6c224bc74eb886a83d2cd5acd, type: 3}
   description: 
   f0: 0
   f1: 0

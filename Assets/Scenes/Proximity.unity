@@ -9513,7 +9513,7 @@ RectTransform:
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
   m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 100, y: 100}
+  m_SizeDelta: {x: 150, y: 150}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!1 &1433574290
 GameObject:
@@ -15242,7 +15242,7 @@ MonoBehaviour:
   scoring: {fileID: 1255481618}
   throwMultiplier: 1.4
   maxThrowSpeed: 1000
-  throwDeadZone: 0.05
+  throwDeadZone: 0.1
   velocitySampleCount: 6
   velocitySampleWindow: 0.05
   boundsInset: 0
@@ -15262,6 +15262,7 @@ MonoBehaviour:
   flightLinearDamping: 1.4
   cancelDragAtTouchCount: 3
   pauseBlockDurationAfterThrow: 0.3
+  throwPickupBufferDuration: 0.1
 --- !u!50 &1704219535
 Rigidbody2D:
   serializedVersion: 5
@@ -17118,6 +17119,7 @@ MonoBehaviour:
   rewardDatabase: {fileID: 11400000, guid: d23e8a9194e845a45a7c7044750407ee, type: 2}
   debugLog: 1
   testLevel: 50
+  teleportLevel: 90
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

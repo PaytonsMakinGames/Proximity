@@ -56,6 +56,29 @@ public class XpManager : MonoBehaviour
             OnLevelUp?.Invoke(afterLevel);
     }
 
+    /// <summary>
+    /// Directly set XP to the specified level (instant jump). Fires level up/down once.
+    /// </summary>
+    public void SetLevelImmediate(int targetLevel)
+    {
+        targetLevel = Mathf.Clamp(targetLevel, 1, XpCurveRS.MaxLevel);
+
+        int beforeLevel = Level;
+
+        Xp = Mathf.Max(0, XpCurveRS.XpForLevel(targetLevel));
+
+        PlayerPrefs.SetInt(xpKey, Xp);
+        PlayerPrefs.Save();
+
+        OnXpChanged?.Invoke(Xp);
+
+        int afterLevel = Level;
+        if (afterLevel > beforeLevel)
+            OnLevelUp?.Invoke(afterLevel);
+        else if (afterLevel < beforeLevel)
+            OnLevelDown?.Invoke(afterLevel);
+    }
+
     int ScaleRawToScaled(int rawAmount)
     {
         if (rawAmount <= 0) return 0;

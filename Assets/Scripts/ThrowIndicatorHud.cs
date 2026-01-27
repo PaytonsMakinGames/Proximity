@@ -18,6 +18,8 @@ public class ThrowIndicatorHud : MonoBehaviour
     RunScoring2D scoring;
     Image[] circleImages;
     int lastKnownMaxThrows = -1;
+    int frozenMaxThrows = -1; // Frozen count when run ends (prevents mid-run equipment changes from showing)
+    int frozenThrowsLeft = -1; // Frozen throwsLeft when run ends
 
     void Awake()
     {
@@ -31,15 +33,33 @@ public class ThrowIndicatorHud : MonoBehaviour
         int maxThrows = scoring.EffectiveThrowsPerRun;
         int throwsLeft = scoring.ThrowsLeft;
 
-        // Rebuild circles if max throws changed
-        if (maxThrows != lastKnownMaxThrows)
+        // If the run is active, update frozen count and allow UI updates
+        if (scoring.RunActive)
         {
-            RebuildCircles(maxThrows);
-            lastKnownMaxThrows = maxThrows;
+            frozenMaxThrows = -1; // Clear freeze when run is active
+            frozenThrowsLeft = -1;
         }
 
-        // Update circle colors
-        UpdateCircleColors(throwsLeft, maxThrows);
+        // If run ended and we haven't frozen yet, freeze both counts
+        if (!scoring.RunActive && frozenMaxThrows == -1 && lastKnownMaxThrows != -1)
+        {
+            frozenMaxThrows = lastKnownMaxThrows;
+            frozenThrowsLeft = throwsLeft;
+        }
+
+        // Use frozen values if run is inactive, otherwise use current
+        int displayMaxThrows = (!scoring.RunActive && frozenMaxThrows != -1) ? frozenMaxThrows : maxThrows;
+        int displayThrowsLeft = (!scoring.RunActive && frozenThrowsLeft != -1) ? frozenThrowsLeft : throwsLeft;
+
+        // Rebuild circles if max throws changed (but respect frozen state)
+        if (displayMaxThrows != lastKnownMaxThrows)
+        {
+            RebuildCircles(displayMaxThrows);
+            lastKnownMaxThrows = displayMaxThrows;
+        }
+
+        // Update circle colors using frozen values when run is inactive
+        UpdateCircleColors(displayThrowsLeft, displayMaxThrows);
     }
 
     void RebuildCircles(int count)

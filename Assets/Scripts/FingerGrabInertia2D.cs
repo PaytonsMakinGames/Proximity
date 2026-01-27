@@ -60,7 +60,11 @@ public class FingerGrabInertia2D : MonoBehaviour
     [Tooltip("Block pause gesture for this duration after releasing a throw.")]
     [SerializeField, Min(0f)] float pauseBlockDurationAfterThrow = 0.3f;
 
+    [Tooltip("Prevent pickup for this duration after throwing to avoid accidental catches on fast throws.")]
+    [SerializeField, Min(0f)] float throwPickupBufferDuration = 0.1f;
+
     float pauseBlockTimer;
+    float throwPickupBufferTimer;
 
     Rigidbody2D rb;
     CircleCollider2D circle;
@@ -127,6 +131,10 @@ public class FingerGrabInertia2D : MonoBehaviour
         // Tick pause block timer
         if (pauseBlockTimer > 0f)
             pauseBlockTimer -= Time.deltaTime;
+
+        // Tick throw pickup buffer timer
+        if (throwPickupBufferTimer > 0f)
+            throwPickupBufferTimer -= Time.deltaTime;
 
         if (GameInputLock.Locked)
         {
@@ -243,6 +251,10 @@ public class FingerGrabInertia2D : MonoBehaviour
     void BeginDragFromScreenPress(Vector2 screenPos)
     {
         if (isDragging) return;
+
+        // Block pickup immediately after throw to prevent accidental catches on fast throws
+        if (throwPickupBufferTimer > 0f)
+            return;
 
         if (!scoring)
             scoring = FindFirstObjectByType<RunScoring2D>(FindObjectsInactive.Include);
@@ -391,7 +403,9 @@ public class FingerGrabInertia2D : MonoBehaviour
             throwVel = throwVel / mag * maxThrowSpeed;
 
         // Dead zone: if velocity is too small, treat as drop instead of throw
-        if (throwVel.sqrMagnitude < throwDeadZone * throwDeadZone)
+        bool isValidThrow = throwVel.sqrMagnitude >= throwDeadZone * throwDeadZone;
+
+        if (!isValidThrow)
         {
             WasDropped = true;
             WasThrown = false;
@@ -413,6 +427,12 @@ public class FingerGrabInertia2D : MonoBehaviour
 
             WasThrown = true;
             WasDropped = false;
+
+            // Check if releasing from within a hot spot and award a hit
+            if (scoring) scoring.TryAwardHotSpotHitOnThrow();
+
+            // Start throw buffer to prevent accidental pickup on fast throws
+            throwPickupBufferTimer = throwPickupBufferDuration;
 
             // Apply flight damping to the thrown ball
             rb.linearDamping = flightLinearDamping;

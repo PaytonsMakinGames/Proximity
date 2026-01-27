@@ -15,7 +15,7 @@ MonoBehaviour:
   id: sticky_ball
   displayName: Sticky Ball
   trigger: 0
-  icon: {fileID: 0}
+  icon: {fileID: 21300000, guid: 4acffb8def4d80749bf31c091a4b2f85, type: 3}
   description: 
   f0: 0
   f1: 0

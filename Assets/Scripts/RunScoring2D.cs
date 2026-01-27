@@ -599,7 +599,16 @@ public class RunScoring2D : MonoBehaviour
                 // Handle Hot Spot initialization (only on first throw when spawned)
                 if (powerups.HotSpotJustSpawnedThisThrow && ballRb)
                 {
-                    hotSpotCenter = ballRb.position;
+                    // Spawn hot spot at ball position, but clamp to screen bounds so the circle stays visible
+                    Vector2 spawnPos = ballRb.position;
+                    GameViewport.GetWorldBounds(out var boundsMin, out var boundsMax);
+                    float circleRadius = hotSpotRadiusStart;
+
+                    // Clamp position so the entire circle stays within bounds
+                    spawnPos.x = Mathf.Clamp(spawnPos.x, boundsMin.x + circleRadius, boundsMax.x - circleRadius);
+                    spawnPos.y = Mathf.Clamp(spawnPos.y, boundsMin.y + circleRadius, boundsMax.y - circleRadius);
+
+                    hotSpotCenter = spawnPos;
                     hotSpotRadius = hotSpotRadiusStart;
                     hotSpotInside = false;
                     hotSpotLastPos = ballRb.position;
@@ -1089,6 +1098,67 @@ public class RunScoring2D : MonoBehaviour
 
         float rSum = hotSpotRadius + ballR;
         return (ballCenter - hotSpotCenter).sqrMagnitude <= (rSum * rSum);
+    }
+
+    /// <summary>
+    /// Check if the ball is in a hot spot and award a hit if applicable.
+    /// Called when a throw is released.
+    /// </summary>
+    public void TryAwardHotSpotHitOnThrow()
+    {
+        if (!streakActive) return;
+        if (!HotSpotActive()) return;
+        if (!ballRb) return;
+
+        // Only award a hit if the ball is currently overlapping the hot spot
+        if (!IsBallOverlappingHotSpot(ballRb.position)) return;
+
+        // Check cooldown
+        float timeSinceLastHit = Time.time - hotSpotLastHitTime;
+        if (timeSinceLastHit < hotSpotHitCooldown)
+            return;  // Still in cooldown, skip
+
+        // Record hit and award points
+        hotSpotLastHitTime = Time.time;
+        int bonus = powerups ? powerups.GetHotSpotDistancePerHit() : 50;
+
+        // Cap at 1000 total points
+        int remainingCapacity = 1000 - hotSpotTotalPointsThisRun;
+        if (remainingCapacity <= 0)
+        {
+            // Hot spot is exhausted, disable it
+            if (powerups) powerups.DisableHotSpot();
+            HotSpot_SetVisualsActive(false);
+            hotSpotEncoreRestored = false;
+            savedHotSpotActive = false;
+            return;
+        }
+
+        // Award only up to the cap
+        bonus = Mathf.Min(bonus, remainingCapacity);
+        hotSpotBonusDistance += bonus;
+        hotSpotBonusDistanceThisRun += bonus;
+        hotSpotTotalPointsThisRun += bonus;
+        BankDistance(bonus);
+        UpdateTotalsUI_LiveBanked();
+        SaveTotalsIfDirty(false);
+
+        // Linear shrink: 20 increments from start size to 0
+        hotSpotRadius = Mathf.Max(0f, hotSpotRadius - (hotSpotRadiusStart / 20f));
+
+        // Disappear when radius is gone
+        if (hotSpotRadius <= 0f)
+        {
+            HotSpot_SetVisualsActive(false);
+            if (powerups) powerups.DisableHotSpot();
+            hotSpotEncoreRestored = false;
+            savedHotSpotActive = false;
+        }
+        else
+        {
+            // Update visuals
+            HotSpot_UpdateVisuals(true);
+        }
     }
 
     // Swept test: use Physics2D to detect if ball passed through hot spot region

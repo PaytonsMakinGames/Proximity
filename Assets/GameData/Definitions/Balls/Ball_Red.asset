@@ -1,0 +1,28 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2d64ef1adad6b4943afe5e660904233d, type: 3}
+  m_Name: Ball_Red
+  m_EditorClassIdentifier: Assembly-CSharp::ItemDef
+  id: ball_red
+  displayName: Red Ball
+  slot: 0
+  icon: {fileID: 21300000, guid: f1ba949e08d91cd459aa652c0ab8d355, type: 3}
+  description: +7 Throws, +50% XP
+  isStarter: 0
+  xpBonus01: 0.5
+  bonusThrows: 7
+  ballSprite: {fileID: 0}
+  ballColor: {r: 0.85098046, g: 0.10980393, b: 0.20784315, a: 1}
+  ballMaterial: {fileID: 0}
+  trailMaterial: {fileID: 0}
+  ballSkinPrefab: {fileID: 5405207911821770145, guid: f46c14b901b24db4f8471a2a342485da, type: 3}
+  trailPrefab: {fileID: 0}

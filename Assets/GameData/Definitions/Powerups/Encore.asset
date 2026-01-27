@@ -15,7 +15,7 @@ MonoBehaviour:
   id: encore
   displayName: Encore
   trigger: 4
-  icon: {fileID: 0}
+  icon: {fileID: 21300000, guid: 8020c28e922f10e4c8d23c8e63625c9e, type: 3}
   description: 
   f0: 0
   f1: 0

@@ -41,8 +41,6 @@ public class ActionDetector : MonoBehaviour
     bool wallFrenzyAwardedThisThrow;
 
     int leftHits, rightHits, topHits, bottomHits;
-    bool greedDoneThisRun;
-    bool desperationDoneThisRun;
 
     float throwDistance;
     Vector2 lastPos;
@@ -184,8 +182,6 @@ public class ActionDetector : MonoBehaviour
     {
         // Called by RunScoring2D when run ends
         throwInFlight = false;
-        greedDoneThisRun = false;
-        desperationDoneThisRun = false;
 
         // Award Edge Case only if ball is still near the top wall when run ends
         if (!edgeCaseAwardedThisThrow && edgeCaseQualified && closestWallThisThrow == 2 && edgeCaseWallTouches <= 1 && grab != null && scoring != null)
@@ -214,8 +210,7 @@ public class ActionDetector : MonoBehaviour
     // Called by external systems
     public void OnRunStarted()
     {
-        greedDoneThisRun = false;
-        desperationDoneThisRun = false;
+        // Greed/Desperation no longer use per-run caps
     }
 
     public void OnThrowReleased(bool wasThrown)
@@ -317,14 +312,13 @@ public class ActionDetector : MonoBehaviour
 
                 bool futureIsGood = predictedMult >= 1f;
 
-                if (futureIsGood && !greedDoneThisRun)
+                // Allow Greed/Desperation on both eligible pickups (removed per-run cap)
+                if (futureIsGood)
                 {
-                    greedDoneThisRun = true;
                     if (rewarder) rewarder.AwardAction("Greed");
                 }
-                else if (!futureIsGood && !desperationDoneThisRun)
+                else
                 {
-                    desperationDoneThisRun = true;
                     if (rewarder) rewarder.AwardAction("Desperation");
                 }
             }
@@ -336,7 +330,8 @@ public class ActionDetector : MonoBehaviour
     bool IsPreLastThrowPickup()
     {
         if (!scoring) return false;
-        return scoring.RunActive && scoring.ThrowsLeft == 1;
+        // Allow Greed/Desperation during the final two pickups instead of only the penultimate
+        return scoring.RunActive && scoring.ThrowsLeft <= 2;
     }
 
     /// <summary>

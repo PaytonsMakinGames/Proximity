@@ -15,7 +15,7 @@ MonoBehaviour:
   id: landing_amplifier
   displayName: Landing Amplifier
   trigger: 4
-  icon: {fileID: 0}
+  icon: {fileID: 21300000, guid: b1e60e1176379d94cae06d9a52d2d5db, type: 3}
   description: 
   f0: 0
   f1: 0
