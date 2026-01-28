@@ -13,5 +13,6 @@ MonoBehaviour:
   m_Name: Brown Ball
   m_EditorClassIdentifier: Assembly-CSharp::CosmeticReward
   rewardId: Reward_Brown_Ball
-  displayName: 'Unlock: Brown (Ball)'
+  displayName: Brown Ball
+  description: +6 Throws, +25% XP
   itemId: ball_brown

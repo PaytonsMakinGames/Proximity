@@ -10,6 +10,8 @@ public abstract class Reward : ScriptableObject
     public string rewardId;  // Unique identifier (e.g., "grant_sticky_ball_level_15")
     [TextArea(2, 4)]
     public string displayName;  // What to show the player (e.g., "Sticky Ball Unlock")
+    [TextArea(3, 6)]
+    public string description;  // Detailed text about the reward
 
     /// <summary>
     /// Grant this reward to the player.

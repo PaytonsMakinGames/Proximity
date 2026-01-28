@@ -28,6 +28,7 @@ public class PowerupManager : MonoBehaviour
 
     [Header("Sticky Ball (v1)")]
     [SerializeField] string stickyBallId = "sticky_ball";
+    [SerializeField] Color stickyBallPopupColor = new Color(0.75f, 0.9f, 1f, 1f);
 
     [Header("Hot Spot (v1)")]
     [SerializeField] string hotSpotId = "hot_spot";
@@ -70,6 +71,14 @@ public class PowerupManager : MonoBehaviour
     public bool OvertimeActiveThisRun => overtimeActiveThisRun;
     public bool OvertimeUsedThisRun => overtimeUsedThisRun;
     public bool EncoreAnyUsedThisRun => encoreUsedThisRun || encoreReviveUsedThisRun;
+
+    // Color accessors for UI/VFX
+    public Color LandingAmpPopupColor => landingAmpPopupColor;
+    public Color InsurancePopupColor => insurancePopupColor;
+    public Color StickyBallPopupColor => stickyBallPopupColor;
+    public Color HotSpotColor => hotSpotColor;
+    public Color OvertimePopupColor => overtimePopupColor;
+    public Color EncorePopupColor => encorePopupColor;
 
     public event Action OnArmedChanged;
 
@@ -227,7 +236,7 @@ public class PowerupManager : MonoBehaviour
             {
                 landingAmpActiveThisThrow = true;
                 if (popups)
-                    popups.PopAtWorldWithExtraOffset(ballWorldPos, "Landing Amp!", landingAmpPopupColor, new Vector2(0f, 0f));
+                    popups.PopAtWorld(ballWorldPos, "Landing Amp!", landingAmpPopupColor);
             }
         }
         // Insurance
@@ -238,10 +247,7 @@ public class PowerupManager : MonoBehaviour
                 insuranceActiveThisThrow = true;
                 insurancePendingConsumption = true;  // Mark for consumption when ball stops
                 if (popups)
-                {
-                    popups.PopAtWorldWithExtraOffset(ballWorldPos, "Insurance!", insurancePopupColor, new Vector2(0f, 0f));
-                    popups.PopAtWorldWithExtraOffset(ballWorldPos, $"Guaranteed {insuranceMinMultiplier}x", insurancePopupColor, new Vector2(0f, -60f));
-                }
+                    popups.PopAtWorld(ballWorldPos, $"Insurance!\nGuaranteed {insuranceMinMultiplier}x", insurancePopupColor);
                 // Don't consume yet - will consume when ball stops
                 Disarm_NoConsume();
             }
@@ -282,10 +288,7 @@ public class PowerupManager : MonoBehaviour
                     encoreUsedThisRun = true;
 
                 if (popups)
-                {
-                    popups.PopAtWorldWithExtraOffset(ballWorldPos, "Encore!", encorePopupColor, new Vector2(0f, 0f));
-                    popups.PopAtWorldWithExtraOffset(ballWorldPos, isEncoreRevive ? "Run Saved" : "+1 Throw", encorePopupColor, new Vector2(0f, -60f));
-                }
+                    popups.PopAtWorld(ballWorldPos, $"Encore!\n{(isEncoreRevive ? "Run Saved" : "+1 Throw")}", encorePopupColor);
 
                 // If this was a revive, restore any saved overtime state so visuals/multiplier continue
                 if (isEncoreRevive && overtimeSavedUsed)
@@ -318,7 +321,7 @@ public class PowerupManager : MonoBehaviour
                 overtimeSavedElapsed = 0f;
                 // Don't reset elapsed - accumulates across all throws in the run
                 if (popups)
-                    popups.PopAtWorldWithExtraOffset(ballWorldPos, "Overtime!", overtimePopupColor, new Vector2(0f, 0f));
+                    popups.PopAtWorld(ballWorldPos, "Overtime!", overtimePopupColor);
             }
         }
     }
@@ -428,5 +431,17 @@ public class PowerupManager : MonoBehaviour
         if (string.IsNullOrEmpty(ArmedId)) return;
         ArmedId = null;
         OnArmedChanged?.Invoke();
+    }
+
+    // Get the display color for a powerup by ID (for rewards/UI)
+    public Color GetPowerupColor(string powerupId)
+    {
+        if (powerupId == landingAmplifierId) return landingAmpPopupColor;
+        if (powerupId == insuranceId) return insurancePopupColor;
+        if (powerupId == stickyBallId) return stickyBallPopupColor;
+        if (powerupId == hotSpotId) return hotSpotColor;
+        if (powerupId == overtimeId) return overtimePopupColor;
+        if (powerupId == "encore") return encorePopupColor;
+        return Color.white; // Fallback
     }
 }

@@ -13,6 +13,7 @@ MonoBehaviour:
   m_Name: Encore
   m_EditorClassIdentifier: Assembly-CSharp::PowerupUnlockReward
   rewardId: Reward_Encore
-  displayName: 'Unlock: Encore (Powerup)'
+  displayName: Encore
+  description: 'Powerup: Get +1 throw mid-run or save a dead run. One use per run'
   powerupId: encore
   initialCount: 1

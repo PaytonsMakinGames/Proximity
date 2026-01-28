@@ -13,5 +13,6 @@ MonoBehaviour:
   m_Name: Green Ball
   m_EditorClassIdentifier: Assembly-CSharp::CosmeticReward
   rewardId: Reward_Green_Ball
-  displayName: 'Unlock: Green (Ball)'
+  displayName: Green Ball
+  description: +3 Throws
   itemId: ball_green

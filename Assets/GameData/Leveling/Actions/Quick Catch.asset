@@ -13,5 +13,6 @@ MonoBehaviour:
   m_Name: Quick Catch
   m_EditorClassIdentifier: Assembly-CSharp::ActionUnlockReward
   rewardId: Reward_Quick_Catch
-  displayName: 'Unlock: Quick Catch (Action)'
+  displayName: Quick Catch
+  description: 'Action: Catch the ball quickly after a throw for a reward'
   actionId: QuickCatch

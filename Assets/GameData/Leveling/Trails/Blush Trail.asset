@@ -13,5 +13,6 @@ MonoBehaviour:
   m_Name: Blush Trail
   m_EditorClassIdentifier: Assembly-CSharp::CosmeticReward
   rewardId: Reward_Blush_Trail
-  displayName: 'Unlock: Blush (Trail)'
+  displayName: Blush
+  description: 'Trail: It looks super cute on you'
   itemId: trail_xp_20

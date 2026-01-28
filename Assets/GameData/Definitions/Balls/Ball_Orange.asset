@@ -21,7 +21,7 @@ MonoBehaviour:
   xpBonus01: 0
   bonusThrows: 2
   ballSprite: {fileID: 0}
-  ballColor: {r: 1, g: 0.5254902, b: 0, a: 1}
+  ballColor: {r: 0.8588236, g: 0.35686275, b: 0.16470589, a: 1}
   ballMaterial: {fileID: 0}
   trailMaterial: {fileID: 0}
   ballSkinPrefab: {fileID: 5405207911821770145, guid: f1c19aa1938c49c46a2e092fd0b0e3e4, type: 3}

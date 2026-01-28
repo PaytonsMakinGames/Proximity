@@ -13,5 +13,6 @@ MonoBehaviour:
   m_Name: Basic Ball
   m_EditorClassIdentifier: Assembly-CSharp::CosmeticReward
   rewardId: Reward_Basic_Ball
-  displayName: 'Unlock: Basic (Ball)'
-  itemId: 
+  displayName: White Ball
+  description: The blank canvas, ready to begin the journey of the throw
+  itemId: ball_white

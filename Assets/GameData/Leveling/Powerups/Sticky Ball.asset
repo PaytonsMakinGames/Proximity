@@ -13,6 +13,8 @@ MonoBehaviour:
   m_Name: Sticky Ball
   m_EditorClassIdentifier: Assembly-CSharp::PowerupUnlockReward
   rewardId: Reward_Sticky_Ball
-  displayName: 'Unlock: Sticky Ball (Powerup)'
+  displayName: Sticky Ball
+  description: 'Powerup: Pin the ball to a wall for a landing multiplier. Throw from
+    farther to earn a better one'
   powerupId: sticky_ball
   initialCount: 1

@@ -13,5 +13,7 @@ MonoBehaviour:
   m_Name: Edge Case
   m_EditorClassIdentifier: Assembly-CSharp::ActionUnlockReward
   rewardId: Reward_Edge_Case
-  displayName: 'Unlock: Edge Case (Action)'
+  displayName: Edge Case
+  description: 'Action: Throw far and reach for the top with one bounce or less.
+    The closer you get, the more you earn'
   actionId: EdgeCase

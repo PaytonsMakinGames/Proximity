@@ -13,5 +13,6 @@ MonoBehaviour:
   m_Name: Yellow Ball
   m_EditorClassIdentifier: Assembly-CSharp::CosmeticReward
   rewardId: Reward_Yellow_Ball
-  displayName: 'Unlock: Yellow (Ball)'
+  displayName: Yellow Ball
+  description: +1 Throw
   itemId: ball_yellow

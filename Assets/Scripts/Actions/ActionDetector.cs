@@ -53,6 +53,7 @@ public class ActionDetector : MonoBehaviour
     int edgeCaseWallTouches;  // Allow 1 wall touch
     float edgeCaseCloseness01;      // 0..1 closeness to top threshold (1 = on the edge)
     bool edgeCaseQualified;         // true once proximity condition met this throw
+    bool stickyUsedThisThrow;       // Track if sticky ball was used (blocks Edge Case)
 
     void Awake()
     {
@@ -184,7 +185,8 @@ public class ActionDetector : MonoBehaviour
         throwInFlight = false;
 
         // Award Edge Case only if ball is still near the top wall when run ends
-        if (!edgeCaseAwardedThisThrow && edgeCaseQualified && closestWallThisThrow == 2 && edgeCaseWallTouches <= 1 && grab != null && scoring != null)
+        // AND sticky ball was not used this throw (mutually exclusive mechanics)
+        if (!edgeCaseAwardedThisThrow && !stickyUsedThisThrow && edgeCaseQualified && closestWallThisThrow == 2 && edgeCaseWallTouches <= 1 && grab != null && scoring != null)
         {
             var rb = grab.GetComponent<Rigidbody2D>();
             if (rb != null)
@@ -231,6 +233,14 @@ public class ActionDetector : MonoBehaviour
         edgeCaseCloseness01 = 0f;
         closestWallThisThrow = -1;
         edgeCaseWallTouches = 0;
+        stickyUsedThisThrow = false;  // Reset sticky tracking
+
+        // Check if sticky ball is armed for this throw (will be activated in OnThrown)
+        var powerups = FindFirstObjectByType<PowerupManager>(FindObjectsInactive.Include);
+        if (powerups && powerups.HasArmed && powerups.ArmedId == powerups.GetStickyBallId())
+        {
+            stickyUsedThisThrow = true;
+        }
 
         if (grab)
         {

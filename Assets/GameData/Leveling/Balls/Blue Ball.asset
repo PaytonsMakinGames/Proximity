@@ -13,5 +13,6 @@ MonoBehaviour:
   m_Name: Blue Ball
   m_EditorClassIdentifier: Assembly-CSharp::CosmeticReward
   rewardId: Reward_Blue_Ball
-  displayName: 'Unlock: Blue (Ball)'
+  displayName: Blue Ball
+  description: '+4 Throws: Satisfaction guaranteed'
   itemId: ball_blue

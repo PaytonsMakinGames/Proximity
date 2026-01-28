@@ -13,5 +13,7 @@ MonoBehaviour:
   m_Name: Desperation
   m_EditorClassIdentifier: Assembly-CSharp::ActionUnlockReward
   rewardId: Reward_Desperation
-  displayName: 'Unlock: Desperation (Action)'
+  displayName: Desperation
+  description: 'Action: Looking like a bad landing? Catch it before it lands for
+    a comeback reward'
   actionId: Desperation

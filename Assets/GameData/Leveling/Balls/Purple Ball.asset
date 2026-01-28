@@ -13,5 +13,6 @@ MonoBehaviour:
   m_Name: Purple Ball
   m_EditorClassIdentifier: Assembly-CSharp::CosmeticReward
   rewardId: Reward_Purple_Ball
-  displayName: 'Unlock: Purple (Ball)'
+  displayName: Purple Ball
+  description: +5 Throws
   itemId: ball_purple

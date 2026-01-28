@@ -13,5 +13,7 @@ MonoBehaviour:
   m_Name: Wall Frenzy
   m_EditorClassIdentifier: Assembly-CSharp::ActionUnlockReward
   rewardId: Reward_Wall_Frenzy
-  displayName: 'Unlock: Wall Frenzy (Action)'
+  displayName: Wall Frenzy
+  description: 'Action: Somewhat evenly hit all four walls a good amount of times
+    in one throw for a reward'
   actionId: WallFrenzy

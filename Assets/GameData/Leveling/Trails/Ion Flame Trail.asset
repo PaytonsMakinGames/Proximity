@@ -13,5 +13,6 @@ MonoBehaviour:
   m_Name: Ion Flame Trail
   m_EditorClassIdentifier: Assembly-CSharp::CosmeticReward
   rewardId: Reward_Ion_Flame
-  displayName: 'Unlock: Ion Flame (Trail)'
+  displayName: Ion Flame
+  description: 'Trail: Burns so hot that it''s blue'
   itemId: trail_xp_10

@@ -13,5 +13,7 @@ MonoBehaviour:
   m_Name: Greed
   m_EditorClassIdentifier: Assembly-CSharp::ActionUnlockReward
   rewardId: Reward_Greed
-  displayName: 'Unlock: Greed (Action)'
+  displayName: Greed
+  description: 'Action: Looking like a good landing? Catch it early for a greedy
+    reward'
   actionId: Greed

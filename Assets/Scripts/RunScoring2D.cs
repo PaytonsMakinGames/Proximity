@@ -54,8 +54,6 @@ public class RunScoring2D : MonoBehaviour
     [SerializeField] Color scoreTextLiveColor = new Color(1f, 1f, 1f, 1f);
     [SerializeField] Color scoreTextEndedColor = new Color(1f, 1f, 1f, 0.35f);
     [SerializeField] Color finalScoreColor = new Color(1f, 0.2f, 0.2f, 1f);  // Red
-    [SerializeField] Color overtimeBonusColor = new Color(1f, 0.85f, 0.5f, 1f);
-    [SerializeField] Color hotSpotBonusColor = new Color(1f, 0.75f, 0.75f, 1f); // Match Hot Spot popup
 
     [Header("Ruler Fade")]
     [SerializeField] float rulerFadeExponent = 1.5f;
@@ -148,10 +146,6 @@ public class RunScoring2D : MonoBehaviour
     [SerializeField] Transform hotSpotMarker;   // circle sprite object
     [SerializeField] TextMeshPro hotSpotText;   // text centered in circle
 
-    // Colors
-    [SerializeField] Color hotSpotLiveColor = new Color(1f, 0.75f, 0.75f, 1f);
-    [SerializeField] Color hotSpotDimmedColor = new Color(1f, 0.75f, 0.75f, 0.35f);
-
     // Gameplay tuning
     [SerializeField, Min(0.05f)] float hotSpotRadiusStart = 0.9f;
 
@@ -204,6 +198,8 @@ public class RunScoring2D : MonoBehaviour
     public int ThrowsLeft => Mathf.Max(0, EffectiveThrowsPerRun - throwsUsedThisRun);
     public bool ThrowsExhausted => EffectiveThrowsPerRun > 0 && throwsExhausted;
     public bool RunActive => streakActive;
+
+    public bool StickyBallPinned => stickyPinned;
 
     public bool CanPickUpBallNow()
     {
@@ -973,7 +969,7 @@ public class RunScoring2D : MonoBehaviour
         if (popups)
         {
             // Popups at pinned position feels better than contact point.
-            popups.PopAtWorldWithExtraOffset(p, "Sticky Ball!", new Color(0.75f, 0.9f, 1f, 1f), new Vector2(0f, 0f));
+            if (popups && powerups) popups.PopAtWorld(p, "Sticky Ball!", powerups.StickyBallPopupColor);
         }
     }
 
@@ -1026,7 +1022,14 @@ public class RunScoring2D : MonoBehaviour
             hotSpotMarker.localScale = new Vector3(d, d, 1f);
 
             var sr = hotSpotMarker.GetComponent<SpriteRenderer>();
-            if (sr) sr.color = useLiveColor ? hotSpotLiveColor : hotSpotDimmedColor;
+            if (sr)
+            {
+                if (powerups)
+                {
+                    Color baseColor = powerups.HotSpotColor;
+                    sr.color = useLiveColor ? baseColor : new Color(baseColor.r, baseColor.g, baseColor.b, 0.35f);
+                }
+            }
         }
 
         if (hotSpotText)
@@ -2130,12 +2133,12 @@ public class RunScoring2D : MonoBehaviour
                 // Show Overtime then Hot Spot
                 if (s.overtimeBonus > 0)
                 {
-                    string bonusColor = ColorUtility.ToHtmlStringRGB(overtimeBonusColor);
+                    string bonusColor = powerups ? ColorUtility.ToHtmlStringRGB(powerups.OvertimePopupColor) : "FFFF00";
                     distanceStr += $" <color=#{bonusColor}>+ {s.overtimeBonus}</color>";
                 }
                 if (s.distHotSpot > 0)
                 {
-                    string hotColor = ColorUtility.ToHtmlStringRGB(hotSpotBonusColor);
+                    string hotColor = powerups ? ColorUtility.ToHtmlStringRGB(powerups.HotSpotColor) : "FFBFBF";
                     distanceStr += $" <color=#{hotColor}>+ {s.distHotSpot}</color>";
                 }
             }
@@ -2144,12 +2147,12 @@ public class RunScoring2D : MonoBehaviour
                 // Show Hot Spot then Overtime
                 if (s.distHotSpot > 0)
                 {
-                    string hotColor = ColorUtility.ToHtmlStringRGB(hotSpotBonusColor);
+                    string hotColor = powerups ? ColorUtility.ToHtmlStringRGB(powerups.HotSpotColor) : "FFBFBF";
                     distanceStr += $" <color=#{hotColor}>+ {s.distHotSpot}</color>";
                 }
                 if (s.overtimeBonus > 0)
                 {
-                    string bonusColor = ColorUtility.ToHtmlStringRGB(overtimeBonusColor);
+                    string bonusColor = powerups ? ColorUtility.ToHtmlStringRGB(powerups.OvertimePopupColor) : "FFFF00";
                     distanceStr += $" <color=#{bonusColor}>+ {s.overtimeBonus}</color>";
                 }
             }

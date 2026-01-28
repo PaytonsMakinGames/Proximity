@@ -13,6 +13,8 @@ MonoBehaviour:
   m_Name: Overtime
   m_EditorClassIdentifier: Assembly-CSharp::PowerupUnlockReward
   rewardId: Reward_Overtime
-  displayName: 'Unlock: Overtime (Powerup)'
+  displayName: Overtime
+  description: 'Powerup: The longer the ball stays in motion, the stronger it multiplies
+    distance'
   powerupId: overtime
   initialCount: 1

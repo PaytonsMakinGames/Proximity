@@ -13,6 +13,8 @@ MonoBehaviour:
   m_Name: Insurance
   m_EditorClassIdentifier: Assembly-CSharp::PowerupUnlockReward
   rewardId: Reward_Insurance
-  displayName: 'Unlock: Insurance (Powerup)'
+  displayName: Insurance
+  description: 'Powerup: Guarantees a landing multiplier on your next throw. Perfect
+    safety net when you need it'
   powerupId: insurance
   initialCount: 1

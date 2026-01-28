@@ -13,6 +13,8 @@ MonoBehaviour:
   m_Name: Landing Amplifier
   m_EditorClassIdentifier: Assembly-CSharp::PowerupUnlockReward
   rewardId: Reward_Landing_Amplifier
-  displayName: 'Unlock: Landing Amplifier (Powerup)'
+  displayName: Landing Amplifier
+  description: 'Powerup: Boosts edges and corners for massive multipliers. Middle
+    landing still gives 0x'
   powerupId: landing_amplifier
   initialCount: 1
