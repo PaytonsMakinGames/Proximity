@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PowerupUnlockReward
   rewardId: Reward_Hot_Spot
   displayName: Hot Spot
-  description: 'Powerup: Spawns a shrinking target zone where your throw ends. Hit
-    it for bonus distance'
+  description: 'Powerup: Spawns a shrinking target zone where you release your throw.
+    Hit it for bonus distance'
   powerupId: hot_spot
   initialCount: 1

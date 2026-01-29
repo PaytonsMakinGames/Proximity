@@ -172,14 +172,20 @@ public class ActionRewarder : MonoBehaviour
         table = FilterUnlockedPowerups(table, manager);
 
         Vector2 where = ballRb ? ballRb.position : Vector2.zero;
-        int distanceBonus = scoring ? scoring.AwardEdgeCaseDistanceLikeNormal(throwDistance, where, closeness01) : Mathf.RoundToInt(throwDistance);
+        int distanceBonus = scoring ? scoring.CalculateEdgeCaseXp(throwDistance, where) : Mathf.RoundToInt(throwDistance);
+        if (distanceBonus <= 0)
+        {
+            // Treat as not qualified: no XP, no drops, no popups
+            return;
+        }
+        if (scoring) scoring.AwardEdgeCaseDistanceLikeNormal(throwDistance, where, closeness01);
         string actionHex = "96C8FF";  // Edge Case color
         string xpHex = ColorToHex(rewardXpColor);
 
         if (table == null || table.Length == 0)
         {
             // No unlocked powerups, just give distance bonus
-            if (popups)
+            if (popups && distanceBonus > 0)
             {
                 popups.PopAtWorld(where, $"<color=#{actionHex}>Edge Case!</color>\n<color=#{xpHex}>+{distanceBonus} XP</color>", Color.white);
             }
@@ -193,7 +199,7 @@ public class ActionRewarder : MonoBehaviour
         {
             // No drop - just distance bonus (single popup with newline)
             AddToRewardHistory(null); // Add whiff to history to fill the window
-            if (popups)
+            if (popups && distanceBonus > 0)
             {
                 popups.PopAtWorld(where, $"<color=#{actionHex}>Edge Case!</color>\n<color=#{xpHex}>+{distanceBonus} XP</color>", Color.white);
             }
@@ -217,7 +223,14 @@ public class ActionRewarder : MonoBehaviour
             // Get powerup color from manager instead of using default reward color
             var powerupManager = FindFirstObjectByType<PowerupManager>(FindObjectsInactive.Include);
             itemHex = ColorToHex(powerupManager ? powerupManager.GetPowerupColor(id) : rewardItemColor);
-            popups.PopAtWorld(where, $"<color=#{actionHex}>Edge Case!</color>\n<color=#{itemHex}>+1 {prettyName}</color>\n<color=#{xpHex}>+{distanceBonus} XP</color>", Color.white);
+            if (distanceBonus > 0)
+            {
+                popups.PopAtWorld(where, $"<color=#{actionHex}>Edge Case!</color>\n<color=#{itemHex}>+1 {prettyName}</color>\n<color=#{xpHex}>+{distanceBonus} XP</color>", Color.white);
+            }
+            else
+            {
+                popups.PopAtWorld(where, $"<color=#{actionHex}>Edge Case!</color>\n<color=#{itemHex}>+1 {prettyName}</color>", Color.white);
+            }
         }
     }
 

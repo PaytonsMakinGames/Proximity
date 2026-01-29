@@ -9,6 +9,8 @@ using UnityEngine.UI;
 /// </summary>
 public class LevelUpModalWindow : MonoBehaviour
 {
+    public static bool IsModalOpen { get; private set; }
+
     [Header("Refs")]
     [SerializeField] LevelRewardManager levelRewardManager;
     [SerializeField] CanvasGroup canvasGroup;  // For fade in/out
@@ -104,6 +106,7 @@ public class LevelUpModalWindow : MonoBehaviour
 
         // Block game input
         GameInputLock.Locked = true;
+        IsModalOpen = true;
         canvasGroup.blocksRaycasts = true;
         canvasGroup.interactable = true;
 
@@ -116,6 +119,7 @@ public class LevelUpModalWindow : MonoBehaviour
     public void HideLevelUpWindow()
     {
         GameInputLock.Locked = false;
+        IsModalOpen = false;
         canvasGroup.alpha = 0f;
         canvasGroup.blocksRaycasts = false;
         canvasGroup.interactable = false;

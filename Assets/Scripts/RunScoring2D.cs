@@ -86,7 +86,7 @@ public class RunScoring2D : MonoBehaviour
     [SerializeField] ForcedLaneAxis forcedLaneAxis = ForcedLaneAxis.Vertical;
 
     [Header("Run Throw Limit")]
-    [SerializeField, Min(0)] int throwsPerRun = 7;
+    [SerializeField, Min(0)] int throwsPerRun = 3;
     [SerializeField] bool consumeThrowOnRelease = true;
     [SerializeField] bool consumeThrowOnMiss = true;
 
@@ -119,7 +119,7 @@ public class RunScoring2D : MonoBehaviour
 
     [Header("Edge Case")]
     [SerializeField, Min(0.1f)] float edgeCaseDistanceMultiplier = 3f;  // Multiplier on thrown distance before landing mult
-    [SerializeField, Min(0.01f)] float edgeCaseClosenessBaseline = 0.1f; // Minimum closeness factor at threshold
+    // Removed unused: [SerializeField, Min(0.01f)] float edgeCaseClosenessBaseline = 0.1f; // Minimum closeness factor at threshold
     [SerializeField, Min(0.1f)] float edgeCaseClosenessExponent = 2.5f;  // Steepness toward the wall
 
     [Header("Powerups (v1)")]
@@ -1834,27 +1834,41 @@ public class RunScoring2D : MonoBehaviour
         return m;
     }
 
+    // Calculate Edge Case XP without applying it (side-effect free).
+    public int CalculateEdgeCaseXp(float throwDistance, Vector2 landingWorldPos)
+    {
+        // Simple system: score based purely on position from top wall (top third of screen)
+        // The closer to the top, the exponentially more points
+
+        // Measure distance from top as a percentage of screen height
+        WorldBounds b = ComputeBounds();
+        float screenHeight = b.top - b.bottom;
+        float distFromTop = (b.top - landingWorldPos.y) / screenHeight;
+
+        // Only award if in top third (0 to 0.33)
+        if (distFromTop < 0f || distFromTop > 0.33f)
+            return 0;
+
+        // Normalize to 0-1 range within top third
+        float position01 = 1f - (distFromTop / 0.33f);  // 0 at edge, 1 at threshold
+
+        // Apply exponential scaling: closer to top = exponentially more points
+        float exponent = Mathf.Max(0.1f, edgeCaseClosenessExponent);
+        float multiplier = Mathf.Pow(position01, exponent);
+
+        // Scale by throw distance for final points
+        float scaled = throwDistance * Mathf.Max(0.0001f, distanceUnitScale) * Mathf.Max(0.1f, edgeCaseDistanceMultiplier);
+        float add = Mathf.Max(0f, scaled * multiplier);
+
+        return RoundInt(add);
+    }
+
     // Award Edge Case: add weighted distance directly as XP (bypasses run scoring).
-    // closeness01: 0..1 where 1 is essentially on the wall; weighted with exponent and baseline.
     // Returns the rounded value for popup/feedback.
     public int AwardEdgeCaseDistanceLikeNormal(float throwDistance, Vector2 landingWorldPos, float closeness01)
     {
-        // For Edge Case, use only edge value (top wall), not corner bonuses
-        WorldBounds b = ComputeBounds();
-        GetCenterNormalized(landingWorldPos, b, out float nx, out float ny);
-        bool capped = streakActive && ShouldCapRightNow();
-        float edgeValue = capped ? cappedEdgeValue : normalEdgeValue;
-        float scaled = throwDistance * Mathf.Max(0.0001f, distanceUnitScale) * Mathf.Max(0.1f, edgeCaseDistanceMultiplier);
-        // Closeness weighting: floor at baseline, curve toward 1 with exponent to heavily reward tighter shots.
-        float c = Mathf.Clamp01(closeness01);
-        float closenessBoost = Mathf.Pow(c, Mathf.Max(0.1f, edgeCaseClosenessExponent));
-        float closenessFactor = Mathf.Max(edgeCaseClosenessBaseline, closenessBoost);
-        // Use only the top wall multiplier, not corner bonuses
-        float add = Mathf.Max(0f, scaled * closenessFactor * edgeValue);
-
-        int xpToAdd = RoundInt(add);
-        if (xp) xp.AddXp(xpToAdd);
-
+        int xpToAdd = CalculateEdgeCaseXp(throwDistance, landingWorldPos);
+        if (xp && xpToAdd > 0) xp.AddXp(xpToAdd);
         return xpToAdd;
     }
 
@@ -2167,7 +2181,7 @@ public class RunScoring2D : MonoBehaviour
         {
             if (showLandLine && allowExpandedUi)
             {
-                landMultText.text = $"land x{s.landingShown:0.00}";
+                landMultText.text = $"x{s.landingShown:0.00}";
                 landMultText.color = ended ? endedColor : liveColor;
                 landMultText.gameObject.SetActive(true);
             }

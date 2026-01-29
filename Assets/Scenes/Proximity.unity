@@ -6636,7 +6636,6 @@ RectTransform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 1265776096}
-  - {fileID: 1208665407}
   m_Father: {fileID: 332352081}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
@@ -8656,68 +8655,6 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1178795477}
   m_CullTransparentMesh: 1
---- !u!1 &1208665406
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 1208665407}
-  - component: {fileID: 1208665408}
-  m_Layer: 5
-  m_Name: LevelChangeNotifier
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!224 &1208665407
-RectTransform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1208665406}
-  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 1
-  m_Children: []
-  m_Father: {fileID: 598945879}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0.5, y: 0.5}
-  m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 0, y: 0}
-  m_SizeDelta: {x: 100, y: 100}
-  m_Pivot: {x: 0.5, y: 0.5}
---- !u!114 &1208665408
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1208665406}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 9eaafadc4099fb540ab5b4bd0ec8b06a, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::LevelChangeNotifier
-  xp: {fileID: 2147115612}
-  canvas: {fileID: 598945882}
-  levelUpPrefab: {fileID: 0}
-  levelDownPrefab: {fileID: 0}
-  screenCenterOffset: {x: 0, y: 0}
-  displayDuration: 2
-  fadeInTime: 0.2
-  fadeOutTime: 0.5
-  scaleUpAmount: 1.2
-  scaleUpTime: 0.3
-  fontSize: 72
-  popupSize: {x: 600, y: 150}
-  levelUpColor: {r: 0.3, g: 1, b: 0.3, a: 1}
-  levelDownColor: {r: 1, g: 0.3, b: 0.3, a: 1}
 --- !u!1 &1232365400
 GameObject:
   m_ObjectHideFlags: 0
@@ -9132,7 +9069,7 @@ MonoBehaviour:
   laneHalfWidth: 0.55
   laneAxisMode: 0
   forcedLaneAxis: 1
-  throwsPerRun: 5
+  throwsPerRun: 3
   consumeThrowOnRelease: 1
   consumeThrowOnMiss: 1
   throwsLeftText: {fileID: 0}
@@ -9149,8 +9086,7 @@ MonoBehaviour:
   onboardingFirstThrowKey: OnboardingFirstThrow
   throwIndicator: {fileID: 1721410209}
   edgeCaseDistanceMultiplier: 50
-  edgeCaseClosenessBaseline: 0.1
-  edgeCaseClosenessExponent: 2.5
+  edgeCaseClosenessExponent: 3
   powerups: {fileID: 2134150883}
   popups: {fileID: 1265776097}
   stickyFullDistanceForNormalLanding: 4
@@ -17457,7 +17393,6 @@ MonoBehaviour:
   wallFrenzyMinCoverage: 0.25
   wallFrenzyMinWallsHit: 4
   preLandingDecisionWindowSeconds: 0.6
-  edgeCaseProximityThreshold: 0.1
   predictedStopMarker: {fileID: 1860371655}
   stopMarkerSmoothSpeed: 0.25
 --- !u!1 &2024384185

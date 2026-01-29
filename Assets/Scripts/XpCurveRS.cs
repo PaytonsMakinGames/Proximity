@@ -7,7 +7,7 @@ public static class XpCurveRS
     public const int MaxLevel = 99;
 
     // Your requested anchor:
-    public const int Level2XpTarget = 3000;
+    public const int Level2XpTarget = 1800;
 
     // Raw OSRS-style table (unscaled)
     static readonly int[] rawTable = BuildRawXpTable();

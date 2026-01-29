@@ -28,8 +28,8 @@ public class ActionDetector : MonoBehaviour
     [Header("Greed / Desperation")]
     [SerializeField, Min(0f)] float preLandingDecisionWindowSeconds = 0.6f;
 
-    [Header("Edge Case")]
-    [SerializeField, Min(0f)] float edgeCaseProximityThreshold = 0.05f;  // Distance from wall as % of screen dimension
+    // Removed unused: [Header("Edge Case")]
+    // Removed unused: [SerializeField, Min(0f)] float edgeCaseProximityThreshold = 0.05f;  // Distance from wall as % of screen dimension
 
     [Header("Predicted Stop Marker")]
     [SerializeField] Transform predictedStopMarker;
@@ -51,7 +51,7 @@ public class ActionDetector : MonoBehaviour
     int closestWallThisThrow = -1;  // -1 = none, 0 = left, 1 = right, 2 = top, 3 = bottom
     bool edgeCaseAwardedThisThrow;
     int edgeCaseWallTouches;  // Allow 1 wall touch
-    float edgeCaseCloseness01;      // 0..1 closeness to top threshold (1 = on the edge)
+    // Removed unused: float edgeCaseCloseness01;      // 0..1 closeness to top threshold (1 = on the edge)
     bool edgeCaseQualified;         // true once proximity condition met this throw
     bool stickyUsedThisThrow;       // Track if sticky ball was used (blocks Edge Case)
 
@@ -126,31 +126,14 @@ public class ActionDetector : MonoBehaviour
 
     void CheckEdgeCaseProximity(Rigidbody2D rb)
     {
+        // Mark as qualified; closeness will be calculated in OnRunEnded
         if (!scoring) return;
         if (edgeCaseAwardedThisThrow) return;
-        if (edgeCaseWallTouches > 1) return;  // Allow 1 wall touch
+        if (edgeCaseWallTouches > 1) return;
 
-        GameViewport.GetWorldBounds(out var min, out var max);
-        Vector2 p = rb.position;
-        float ballR = 0.5f;  // Approximate ball radius
-
-        // Calculate screen dimensions
-        float screenHeight = max.y - min.y;
-
-        // Only track TOP wall (wallId == 2)
-        float distToTop = (max.y - ballR) - p.y;
-        float distToTopPct = distToTop / screenHeight;
-
-        // If not close enough to top or touching, do nothing
-        if (distToTopPct <= 0f || distToTopPct > edgeCaseProximityThreshold) return;
-
-        // Qualified: track proximity and distance
         closestWallThisThrow = 2;  // Top wall
-
-        // Calculate closeness multiplier (0-1, where 1 = at threshold edge)
-        float closenessMultiplier = Mathf.Clamp01(1f - (distToTopPct / edgeCaseProximityThreshold));
-        edgeCaseCloseness01 = closenessMultiplier;
         edgeCaseQualified = true;
+        // Removed unused: edgeCaseCloseness01 = 1f;  // Will be recalculated at award time
     }
 
     void OnEnable()
@@ -176,7 +159,7 @@ public class ActionDetector : MonoBehaviour
         edgeCaseAwardedThisThrow = false;
         edgeCaseWallTouches = 0;
         edgeCaseQualified = false;
-        edgeCaseCloseness01 = 0f;
+        // Removed unused: edgeCaseCloseness01 = 0f;
     }
 
     public void OnRunEnded()
@@ -184,24 +167,29 @@ public class ActionDetector : MonoBehaviour
         // Called by RunScoring2D when run ends
         throwInFlight = false;
 
-        // Award Edge Case only if ball is still near the top wall when run ends
-        // AND sticky ball was not used this throw (mutually exclusive mechanics)
+        // Award Edge Case only if qualified and sticky wasn't used
         if (!edgeCaseAwardedThisThrow && !stickyUsedThisThrow && edgeCaseQualified && closestWallThisThrow == 2 && edgeCaseWallTouches <= 1 && grab != null && scoring != null)
         {
             var rb = grab.GetComponent<Rigidbody2D>();
             if (rb != null)
             {
-                // Use the same wall detection as landing multiplier
-                if (scoring.IsCloseToTopWall(rb.position, edgeCaseProximityThreshold, out float distPct))
+                // Only award if ball is in top third
+                GameViewport.GetWorldBounds(out var min, out var max);
+                float screenHeight = max.y - min.y;
+                float distFromTop = (max.y - rb.position.y) / screenHeight;
+
+                if (distFromTop >= 0f && distFromTop <= 0.33f)
                 {
+                    // Calculate closeness: 0 at boundary, 1 at top
+                    float closeness = 1f - (distFromTop / 0.33f);
                     edgeCaseAwardedThisThrow = true;
-                    if (rewarder) rewarder.AwardEdgeCase(throwDistance, edgeCaseCloseness01);
+                    if (rewarder) rewarder.AwardEdgeCase(throwDistance, closeness);
                 }
             }
         }
 
         edgeCaseQualified = false;
-        edgeCaseCloseness01 = 0f;
+        // Removed unused: edgeCaseCloseness01 = 0f;
         closestWallThisThrow = -1;
         edgeCaseWallTouches = 0;
 
@@ -230,7 +218,7 @@ public class ActionDetector : MonoBehaviour
         throwDistance = 0f;
         markerJustTeleported = false;
         edgeCaseQualified = false;
-        edgeCaseCloseness01 = 0f;
+        // Removed unused: edgeCaseCloseness01 = 0f;
         closestWallThisThrow = -1;
         edgeCaseWallTouches = 0;
         stickyUsedThisThrow = false;  // Reset sticky tracking
@@ -340,8 +328,17 @@ public class ActionDetector : MonoBehaviour
     bool IsPreLastThrowPickup()
     {
         if (!scoring) return false;
-        // Allow Greed/Desperation during the final two pickups instead of only the penultimate
-        return scoring.RunActive && scoring.ThrowsLeft <= 2;
+
+        if (!scoring.RunActive) return false;
+
+        int totalThrows = scoring.EffectiveThrowsPerRun;
+        int throwsLeft = scoring.ThrowsLeft;
+        int currentThrowNumber = totalThrows - throwsLeft;
+
+        // Farmable on second half of throws (up to but not including the last throw)
+        // E.g., 8 throws: farmable on throws 5,6,7 (halfway=4, so currentThrow > 4 and < 8)
+        // E.g., 3 throws: farmable on throw 2 (halfway=1.5→1, so currentThrow > 1 and < 3)
+        return currentThrowNumber > totalThrows / 2f && throwsLeft >= 1;
     }
 
     /// <summary>

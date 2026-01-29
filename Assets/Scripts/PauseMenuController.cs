@@ -81,6 +81,10 @@ public class PauseMenuController : MonoBehaviour
         if (scoring && !scoring.CanPauseNow())
             return;
 
+        // Block pause while level-up modal is open
+        if (LevelUpModalWindow.IsModalOpen)
+            return;
+
         if (IsPaused) Resume();
         else Pause();
     }
